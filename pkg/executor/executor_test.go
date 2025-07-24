@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,6 +18,10 @@ type FakeCommandRunner struct {
 }
 
 func (f *FakeCommandRunner) Run(command []string) (int, error) {
+	return f.RunWithContext(context.Background(), command)
+}
+
+func (f *FakeCommandRunner) RunWithContext(ctx context.Context, command []string) (int, error) {
 	f.CallCount++
 	return f.ExitCode, f.Error
 }
@@ -28,6 +33,10 @@ type FakeCommandRunnerWithSequence struct {
 }
 
 func (f *FakeCommandRunnerWithSequence) Run(command []string) (int, error) {
+	return f.RunWithContext(context.Background(), command)
+}
+
+func (f *FakeCommandRunnerWithSequence) RunWithContext(ctx context.Context, command []string) (int, error) {
 	if f.CallCount >= len(f.ExitCodes) {
 		// Return last exit code if we've exhausted the sequence
 		return f.ExitCodes[len(f.ExitCodes)-1], nil
@@ -236,4 +245,106 @@ func TestExecutor_NoDelayOnSuccess(t *testing.T) {
 
 	// And there should be no delay (execution should be fast)
 	assert.Less(t, elapsed, 50*time.Millisecond)
+}
+
+func TestExecutor_FailsOnTimeout(t *testing.T) {
+	// Given an executor configured with a 20ms timeout
+	executor := &Executor{
+		MaxAttempts:     1,
+		Runner:          &SystemCommandRunner{},
+		BackoffStrategy: nil,
+		Timeout:         20 * time.Millisecond,
+	}
+
+	// And a command that sleeps for 100ms (longer than timeout)
+	command := []string{"sleep", "0.1"} // Sleep for 100ms
+
+	// When Run() is called
+	result, err := executor.Run(command)
+
+	// Then there should be no error (timeout is handled as failure, not error)
+	require.NoError(t, err)
+
+	// And the result should be a failure due to timeout
+	assert.False(t, result.Success)
+	assert.Equal(t, 1, result.AttemptCount)
+	assert.True(t, result.TimedOut)
+
+	// And the attempt should have been terminated quickly
+	// (not waited for the full 100ms sleep)
+}
+
+func TestExecutor_TimeoutWithRetries(t *testing.T) {
+	// Given an executor with timeout and multiple attempts
+	executor := NewExecutorWithTimeout(3, 30*time.Millisecond)
+
+	// When a command that always times out is run
+	start := time.Now()
+	result, err := executor.Run([]string{"sleep", "0.1"}) // 100ms sleep, 30ms timeout
+	elapsed := time.Since(start)
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And all attempts should have timed out
+	assert.False(t, result.Success)
+	assert.Equal(t, 3, result.AttemptCount)
+	assert.True(t, result.TimedOut)
+
+	// And the total time should be around 90ms (3 timeouts of ~30ms each)
+	assert.GreaterOrEqual(t, elapsed, 80*time.Millisecond)
+	assert.Less(t, elapsed, 150*time.Millisecond)
+}
+
+func TestExecutor_NoTimeoutWhenZero(t *testing.T) {
+	// Given an executor with zero timeout (disabled)
+	executor := NewExecutor(1)
+	assert.Equal(t, time.Duration(0), executor.Timeout)
+
+	// When a command is run
+	result, err := executor.Run([]string{"true"})
+
+	// Then it should succeed normally
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.False(t, result.TimedOut)
+}
+
+func TestExecutorConstructors_WithTimeout(t *testing.T) {
+	// Test NewExecutorWithTimeout
+	executor1 := NewExecutorWithTimeout(2, 50*time.Millisecond)
+	assert.Equal(t, 2, executor1.MaxAttempts)
+	assert.Equal(t, 50*time.Millisecond, executor1.Timeout)
+	assert.Nil(t, executor1.BackoffStrategy)
+
+	// Test NewExecutorWithBackoffAndTimeout
+	strategy := backoff.NewFixed(25 * time.Millisecond)
+	executor2 := NewExecutorWithBackoffAndTimeout(3, strategy, 100*time.Millisecond)
+	assert.Equal(t, 3, executor2.MaxAttempts)
+	assert.Equal(t, 100*time.Millisecond, executor2.Timeout)
+	assert.Equal(t, strategy, executor2.BackoffStrategy)
+}
+
+func TestExecutor_TimeoutWithBackoff(t *testing.T) {
+	// Given an executor with both timeout and backoff
+	strategy := backoff.NewFixed(20 * time.Millisecond)
+	executor := NewExecutorWithBackoffAndTimeout(2, strategy, 30*time.Millisecond)
+
+	// When a command that times out is run
+	start := time.Now()
+	result, err := executor.Run([]string{"sleep", "0.1"}) // 100ms sleep, 30ms timeout
+	elapsed := time.Since(start)
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And it should fail with timeout after 2 attempts
+	assert.False(t, result.Success)
+	assert.Equal(t, 2, result.AttemptCount)
+	assert.True(t, result.TimedOut)
+
+	// And the total time should include both timeouts and one backoff delay
+	// ~30ms (first timeout) + 20ms (backoff) + ~30ms (second timeout) = ~80ms
+	assert.GreaterOrEqual(t, elapsed, 70*time.Millisecond)
+	assert.Less(t, elapsed, 120*time.Millisecond)
 }

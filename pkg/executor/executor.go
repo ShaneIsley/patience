@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"os/exec"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 // CommandRunner defines the interface for executing commands
 type CommandRunner interface {
 	Run(command []string) (int, error)
+	RunWithContext(ctx context.Context, command []string) (int, error)
 }
 
 // SystemCommandRunner implements CommandRunner using os/exec
@@ -17,14 +19,23 @@ type SystemCommandRunner struct{}
 
 // Run executes a command using os/exec and returns the exit code
 func (r *SystemCommandRunner) Run(command []string) (int, error) {
+	return r.RunWithContext(context.Background(), command)
+}
+
+// RunWithContext executes a command with context support for timeouts
+func (r *SystemCommandRunner) RunWithContext(ctx context.Context, command []string) (int, error) {
 	if len(command) == 0 {
 		return -1, nil
 	}
 
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	err := cmd.Run()
 
 	if err != nil {
+		// Check for context deadline exceeded (timeout)
+		if ctx.Err() == context.DeadlineExceeded {
+			return -1, context.DeadlineExceeded
+		}
 		if exitError, ok := err.(*exec.ExitError); ok {
 			return exitError.ExitCode(), nil
 		}
@@ -39,6 +50,7 @@ type Executor struct {
 	MaxAttempts     int
 	Runner          CommandRunner
 	BackoffStrategy backoff.Strategy
+	Timeout         time.Duration
 }
 
 // NewExecutor creates a new Executor with default SystemCommandRunner and no backoff
@@ -47,6 +59,7 @@ func NewExecutor(maxAttempts int) *Executor {
 		MaxAttempts:     maxAttempts,
 		Runner:          &SystemCommandRunner{},
 		BackoffStrategy: nil, // No delay by default
+		Timeout:         0,   // No timeout by default
 	}
 }
 
@@ -56,6 +69,27 @@ func NewExecutorWithBackoff(maxAttempts int, strategy backoff.Strategy) *Executo
 		MaxAttempts:     maxAttempts,
 		Runner:          &SystemCommandRunner{},
 		BackoffStrategy: strategy,
+		Timeout:         0, // No timeout by default
+	}
+}
+
+// NewExecutorWithTimeout creates a new Executor with specified timeout
+func NewExecutorWithTimeout(maxAttempts int, timeout time.Duration) *Executor {
+	return &Executor{
+		MaxAttempts:     maxAttempts,
+		Runner:          &SystemCommandRunner{},
+		BackoffStrategy: nil,
+		Timeout:         timeout,
+	}
+}
+
+// NewExecutorWithBackoffAndTimeout creates a new Executor with backoff and timeout
+func NewExecutorWithBackoffAndTimeout(maxAttempts int, strategy backoff.Strategy, timeout time.Duration) *Executor {
+	return &Executor{
+		MaxAttempts:     maxAttempts,
+		Runner:          &SystemCommandRunner{},
+		BackoffStrategy: strategy,
+		Timeout:         timeout,
 	}
 }
 
@@ -64,23 +98,41 @@ type Result struct {
 	Success      bool
 	AttemptCount int
 	ExitCode     int
+	TimedOut     bool
 }
 
-// executeAttempt runs a single command attempt and returns the exit code and error
-func (e *Executor) executeAttempt(command []string) (int, error) {
-	return e.Runner.Run(command)
+// executeAttempt runs a single command attempt and returns the exit code, error, and timeout status
+func (e *Executor) executeAttempt(command []string) (int, error, bool) {
+	if e.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
+		defer cancel()
+
+		exitCode, err := e.Runner.RunWithContext(ctx, command)
+		if err == context.DeadlineExceeded {
+			return -1, nil, true // Timeout occurred
+		}
+		return exitCode, err, false
+	}
+
+	// No timeout configured, use regular run
+	exitCode, err := e.Runner.Run(command)
+	return exitCode, err, false
 }
 
 // Run executes the given command with retry logic and returns the result
 func (e *Executor) Run(command []string) (*Result, error) {
 	var lastExitCode int
 	var lastError error
+	var timedOut bool
 
 	// Retry loop
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
-		exitCode, err := e.executeAttempt(command)
+		exitCode, err, timeout := e.executeAttempt(command)
 		lastExitCode = exitCode
 		lastError = err
+		if timeout {
+			timedOut = true
+		}
 
 		if err != nil {
 			return nil, err
@@ -92,6 +144,7 @@ func (e *Executor) Run(command []string) (*Result, error) {
 				AttemptCount: attempt,
 				ExitCode:     exitCode,
 				Success:      true,
+				TimedOut:     false,
 			}, nil
 		}
 
@@ -112,5 +165,6 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		AttemptCount: e.MaxAttempts,
 		ExitCode:     lastExitCode,
 		Success:      false,
+		TimedOut:     timedOut,
 	}, lastError
 }
