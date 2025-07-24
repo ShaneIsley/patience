@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/retry/pkg/metrics"
-	"github.com/user/retry/pkg/storage"
+	"github.com/shaneisley/patience/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/storage"
 )
 
 func TestDaemon_NewDaemon(t *testing.T) {

@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/user/retry/pkg/backoff"
-	"github.com/user/retry/pkg/conditions"
-	"github.com/user/retry/pkg/metrics"
-	"github.com/user/retry/pkg/ui"
+	"github.com/shaneisley/patience/pkg/backoff"
+	"github.com/shaneisley/patience/pkg/conditions"
+	"github.com/shaneisley/patience/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/ui"
 )
 
 // CommandOutput holds the output from a command execution

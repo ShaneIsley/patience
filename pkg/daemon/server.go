@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/user/retry/pkg/storage"
+	"github.com/shaneisley/patience/pkg/storage"
 )
 
 // Server represents the HTTP API server

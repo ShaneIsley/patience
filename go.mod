@@ -1,4 +1,4 @@
-module github.com/user/retry
+module github.com/shaneisley/patience
 
 go 1.21.0
 

@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/retry/pkg/backoff"
-	"github.com/user/retry/pkg/conditions"
+	"github.com/shaneisley/patience/pkg/backoff"
+	"github.com/shaneisley/patience/pkg/conditions"
 )
 
 // FakeCommandRunner is a test double for CommandRunner

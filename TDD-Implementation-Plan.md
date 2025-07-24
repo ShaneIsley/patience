@@ -1,13 +1,13 @@
-# **TDD Implementation Plan: retry CLI**
+# **TDD Implementation Plan: patience CLI**
 
-This document outlines the development plan for the retry CLI, following a strict Test-Driven Development (TDD) methodology. Development is broken down into cycles, each focusing on a specific, testable piece of functionality.
+This document outlines the development plan for the patience CLI, following a strict Test-Driven Development (TDD) methodology. Development is broken down into cycles, each focusing on a specific, testable piece of functionality.
 
 ## **Cycle 0: Project Setup**
 
 **Goal:** Initialize the project structure and CI pipeline.  
 **Tasks:**
 
-1. Initialize Go module: go mod init github.com/user/retry  
+1. Initialize Go module: go mod init github.com/shaneisley/patience  
 2. Set up directory structure (/cmd, /pkg).  
 3. Set up basic CI (e.g., GitHub Actions) to run go build ./... and go test ./... on every push.  
 4. Add testify as a dependency.
@@ -153,3 +153,101 @@ Refactor: N/A.
 * **Cycle 9: Status Reporting:** Implement the detailed CLI output as specified in the architecture. Test the output strings.  
 * **Cycle 10: Daemon Metrics:** Implement the async client to send metrics to the retryd daemon. Test that the client attempts to connect to the socket.  
 * **Cycle 11+:** Implement the retryd daemon itself, following a similar TDD cycle for its components (listener, aggregator, HTTP endpoint).
+
+## **Cycle 13: Project Metadata and Licensing**
+
+**Goal:** Add proper project metadata, licensing, and ownership information.  
+**Test (Red):**
+
+* TestProjectMetadata_LicenseExists:
+  * Given the project root directory.
+  * When checking for LICENSE file.
+  * Then MIT license should be present with Shane Isley as copyright holder.
+* TestProjectMetadata_GoModuleCorrect:
+  * Given the go.mod file.
+  * When parsing the module path.
+  * Then it should reference github.com/shaneisley/retry.
+* TestProjectMetadata_ReadmeHasCorrectLinks:
+  * Given the README.md file.
+  * When parsing markdown links.
+  * Then GitHub repository links should point to github.com/shaneisley/retry.
+
+**Code (Green):**
+
+* Update go.mod module path to github.com/shaneisley/retry.
+* Create LICENSE file with MIT license and Shane Isley copyright.
+* Update README.md with correct GitHub URLs and project ownership.
+* Update all import paths in code to use new module path.
+* Add proper project description and contact information.
+
+**Refactor:**
+
+* Ensure all documentation references are consistent.
+* Verify all import statements use the correct module path.
+* Update example configurations with proper project references.
+
+## **Cycle 14: GitHub Repository Setup**
+
+**Goal:** Initialize GitHub repository and push codebase.  
+**Test (Red):**
+
+* TestGitRepository_RemoteConfigured:
+  * Given a local git repository.
+  * When checking remote configuration.
+  * Then origin should point to github.com/shaneisley/retry.
+* TestGitRepository_InitialCommitExists:
+  * Given the GitHub repository.
+  * When checking commit history.
+  * Then initial commit should contain all project files.
+* TestGitRepository_BranchProtection:
+  * Given the GitHub repository settings.
+  * When checking branch protection rules.
+  * Then main branch should have appropriate protections.
+
+**Code (Green):**
+
+* Create GitHub repository at github.com/shaneisley/retry.
+* Configure git remote origin to point to GitHub repository.
+* Create comprehensive .gitignore for Go projects.
+* Push initial codebase with proper commit message.
+* Set up branch protection rules for main branch.
+* Configure repository settings (description, topics, etc.).
+
+**Refactor:**
+
+* Organize repository structure for public consumption.
+* Ensure sensitive information is not committed.
+* Verify all documentation is accurate for public repository.
+
+## **Cycle 15: Distribution and Release Strategy**
+
+**Goal:** Implement modern distribution strategies for the retry project.  
+**Test (Red):**
+
+* TestDistribution_GoReleaserConfig:
+  * Given a .goreleaser.yaml configuration.
+  * When validating the configuration.
+  * Then it should build for multiple platforms and architectures.
+* TestDistribution_GitHubActionsWorkflow:
+  * Given .github/workflows/release.yml.
+  * When triggered by a version tag.
+  * Then it should create GitHub releases with binaries.
+* TestDistribution_HomebrewFormula:
+  * Given a Homebrew formula template.
+  * When processing the formula.
+  * Then it should correctly reference the GitHub repository.
+
+**Code (Green):**
+
+* Create .goreleaser.yaml for cross-platform builds and releases.
+* Set up GitHub Actions workflow for automated releases.
+* Create Homebrew formula template for macOS/Linux distribution.
+* Add Dockerfile for container distribution.
+* Create installation scripts for various package managers.
+* Document distribution methods in README.md.
+
+**Refactor:**
+
+* Optimize build configurations for size and performance.
+* Ensure consistent versioning across all distribution methods.
+* Validate all distribution channels work correctly.

@@ -1,10 +1,13 @@
-# Retry Daemon (retryd)
+# Patience Daemon (patienced)
 
-The retry daemon (`retryd`) is a background service that collects and aggregates metrics from retry CLI instances, providing a centralized monitoring solution for retry operations across your infrastructure.
+The patience daemon (`patienced`) is a background service that collects and aggregates metrics from patience CLI instances, providing a centralized monitoring solution for retry operations across your infrastructure.
+
+**Author:** Shane Isley  
+**Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)
 
 ## Features
 
-- **Metrics Collection**: Receives metrics from retry CLI instances via Unix domain socket
+- **Metrics Collection**: Receives metrics from patience CLI instances via Unix domain socket
 - **Data Aggregation**: Aggregates metrics with configurable retention policies
 - **HTTP API**: RESTful API for accessing metrics and statistics
 - **Web Dashboard**: Built-in web interface for monitoring retry operations
@@ -21,7 +24,7 @@ Use the provided installation script:
 ```bash
 # Build binaries first
 go build ./cmd/retry
-go build ./cmd/retryd
+go build ./cmd/patienced
 
 # Run installation script (requires root)
 sudo ./scripts/install.sh
@@ -31,13 +34,13 @@ sudo ./scripts/install.sh
 
 1. **Build the daemon**:
    ```bash
-   go build -o retryd ./cmd/retryd
+   go build -o patienced ./cmd/patienced
    ```
 
 2. **Install binary**:
    ```bash
-   sudo cp retryd /usr/local/bin/
-   sudo chmod 755 /usr/local/bin/retryd
+   sudo cp patienced /usr/local/bin/
+   sudo chmod 755 /usr/local/bin/patienced
    ```
 
 3. **Create configuration directory**:
@@ -113,13 +116,13 @@ Configuration can also be set via environment variables:
 #### Manual Start
 ```bash
 # Foreground
-retryd
+patienced
 
 # With custom config
-retryd -config /path/to/config.json
+patienced -config /path/to/config.json
 
 # Background (basic daemonization)
-retryd -daemon
+patienced -daemon
 ```
 
 #### Using System Service Manager
@@ -154,19 +157,19 @@ tail -f /usr/local/var/log/retry/daemon.log
 
 ```bash
 # Check daemon status
-retryd -status
+patienced -status
 
 # Stop daemon
-retryd -stop
+patienced -stop
 
 # Show version
-retryd -version
+patienced -version
 ```
 
 ### Command Line Options
 
 ```
-Usage: retryd [options]
+Usage: patienced [options]
 
 Options:
   -config string
@@ -260,7 +263,7 @@ The dashboard provides:
 
 ## Integration with Retry CLI
 
-The retry CLI automatically sends metrics to the daemon when available. No additional configuration is required - the CLI will attempt to connect to the daemon socket and gracefully continue if the daemon is not running.
+The patience CLI automatically sends metrics to the daemon when available. No additional configuration is required - the CLI will attempt to connect to the daemon socket and gracefully continue if the daemon is not running.
 
 ### Metrics Sent
 
@@ -316,13 +319,13 @@ Monitor daemon performance via:
    sudo lsof -i :8080
    
    # Use different port
-   retryd -port 8081
+   patienced -port 8081
    ```
 
 3. **Daemon won't start**:
    ```bash
    # Check if already running
-   retryd -status
+   patienced -status
    
    # Check logs
    journalctl -u retry-daemon -n 50
@@ -331,10 +334,10 @@ Monitor daemon performance via:
 4. **High memory usage**:
    ```bash
    # Reduce max metrics
-   retryd -max-metrics 5000
+   patienced -max-metrics 5000
    
    # Reduce max age
-   retryd -max-age 12h
+   patienced -max-age 12h
    ```
 
 ### Logging
@@ -353,12 +356,12 @@ Log levels: `debug`, `info`, `warn`, `error`
 
 Enable debug logging:
 ```bash
-retryd -log-level debug
+patienced -log-level debug
 ```
 
 Enable profiling:
 ```bash
-retryd -enable-profiling
+patienced -enable-profiling
 # Then access http://localhost:8080/debug/pprof/
 ```
 
@@ -395,14 +398,14 @@ git clone <repository-url>
 cd retry
 
 # Build daemon
-go build -o retryd ./cmd/retryd
+go build -o patienced ./cmd/patienced
 
 # Run tests
 go test ./pkg/daemon/...
 go test ./pkg/storage/...
 
 # Run with race detection
-go run -race ./cmd/retryd
+go run -race ./cmd/patienced
 ```
 
 ### Contributing

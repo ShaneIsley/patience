@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/retry/pkg/storage"
+	"github.com/shaneisley/patience/pkg/storage"
 )
 
 func TestServer_HandleRecentMetrics(t *testing.T) {

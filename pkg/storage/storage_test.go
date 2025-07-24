@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/retry/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/metrics"
 )
 
 func TestMetricsStorage_Store(t *testing.T) {

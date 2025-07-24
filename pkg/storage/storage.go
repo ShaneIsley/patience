@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/user/retry/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/metrics"
 )
 
 // MetricsStorage provides thread-safe storage and aggregation of retry metrics

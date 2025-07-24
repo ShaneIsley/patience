@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/user/retry/pkg/metrics"
-	"github.com/user/retry/pkg/storage"
+	"github.com/shaneisley/patience/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/storage"
 )
 
 // Daemon represents the retry metrics daemon
