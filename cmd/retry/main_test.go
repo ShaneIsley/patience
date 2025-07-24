@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -200,4 +201,106 @@ func TestCLI_CaseInsensitivePattern(t *testing.T) {
 
 	// Then it should succeed with case-insensitive matching
 	require.NoError(t, err)
+}
+
+func TestCLI_ConfigFile(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// And a configuration file
+	configContent := `
+attempts = 5
+delay = "100ms"
+backoff = "exponential"
+success_pattern = "success"
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// When executing with config file
+	cmd := exec.Command(binary,
+		"--config", configFile,
+		"--", "sh", "-c", "echo 'deployment success'; exit 1")
+	err = cmd.Run()
+
+	// Then it should succeed using config file settings
+	require.NoError(t, err)
+}
+
+func TestCLI_ConfigFileWithFlagOverride(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// And a configuration file with success pattern
+	configContent := `
+attempts = 2
+success_pattern = "success"
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// When executing with config file but overriding attempts via flag
+	cmd := exec.Command(binary,
+		"--config", configFile,
+		"--attempts", "1", // Override config file value
+		"--", "sh", "-c", "echo 'deployment success'; exit 1")
+	err = cmd.Run()
+
+	// Then it should succeed using flag override (1 attempt is enough due to success pattern)
+	require.NoError(t, err)
+}
+
+func TestCLI_AutoDiscoverConfigFile(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// And a configuration file in current directory
+	configContent := `
+attempts = 1
+success_pattern = "success"
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, ".retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Get absolute path to binary
+	absBinary, err := filepath.Abs(binary)
+	require.NoError(t, err)
+
+	// When executing from the directory with config file (no --config flag)
+	cmd := exec.Command(absBinary, "--", "sh", "-c", "echo 'deployment success'; exit 1")
+	cmd.Dir = tmpDir // Run from the temp directory
+	err = cmd.Run()
+
+	// Then it should succeed using auto-discovered config file
+	require.NoError(t, err)
+}
+
+func TestCLI_InvalidConfigFile(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// And an invalid configuration file
+	configContent := `
+attempts = "invalid"
+[broken toml
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// When executing with invalid config file
+	cmd := exec.Command(binary,
+		"--config", configFile,
+		"--", "true")
+	err = cmd.Run()
+
+	// Then it should fail with config error
+	require.Error(t, err)
 }

@@ -12,6 +12,7 @@ We've all been there – a deployment script fails because of a temporary networ
 - **Configurable attempts** – Set how many times to try
 - **Smart backoff strategies** – Choose between fixed delays or exponential backoff
 - **Timeout protection** – Prevent commands from hanging indefinitely
+- **Pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
 - **Zero dependencies** – Single binary that works anywhere
 
@@ -54,6 +55,79 @@ retry --timeout 30s -- wget https://large-file.example.com/download
 
 # Combine all options with exponential backoff and max delay
 retry --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --timeout 30s -- deployment-script
+
+# Pattern matching - succeed when output contains "success" (even if exit code is non-zero)
+retry --success-pattern "deployment successful" -- deploy.sh
+
+# Pattern matching - fail when output contains "error" (even if exit code is zero)
+retry --failure-pattern "(?i)error|failed" -- health-check.sh
+
+# Case-insensitive pattern matching
+retry --success-pattern "SUCCESS" --case-insensitive -- deployment-script
+
+## Pattern Matching
+
+Many real-world commands don't use exit codes properly. A deployment script might print "deployment successful" but exit with code 1, or a health check might exit with code 0 but print "Error: service unavailable". Pattern matching solves this by letting you define success and failure based on the command's output.
+
+### Success Patterns
+
+Use `--success-pattern` to define when a command should be considered successful, regardless of exit code:
+
+```bash
+# Deployment tools that don't use exit codes properly
+retry --success-pattern "deployment successful" -- kubectl apply -f deployment.yaml
+
+# API responses that indicate success
+retry --success-pattern "\"status\":\"ok\"" -- curl -s https://api.example.com/status
+
+# Multiple success indicators (regex OR)
+retry --success-pattern "(success|completed|ready)" -- health-check.sh
+```
+
+### Failure Patterns
+
+Use `--failure-pattern` to define when a command should be considered failed, even with exit code 0:
+
+```bash
+# Catch error messages in output
+retry --failure-pattern "(?i)error|failed|timeout" -- flaky-script.sh
+
+# Specific failure conditions
+retry --failure-pattern "connection refused|network unreachable" -- network-test.sh
+
+# JSON error responses
+retry --failure-pattern "\"error\":" -- api-call.sh
+```
+
+### Pattern Precedence
+
+Patterns are evaluated in this order:
+1. **Failure pattern match** → Command fails (exit code 1)
+2. **Success pattern match** → Command succeeds (exit code 0)  
+3. **Exit code** → Standard behavior (0 = success, non-zero = failure)
+
+### Case-Insensitive Matching
+
+Add `--case-insensitive` to make pattern matching case-insensitive:
+
+```bash
+# Matches "SUCCESS", "success", "Success", etc.
+retry --success-pattern "success" --case-insensitive -- deployment.sh
+```
+
+### Regex Support
+
+Both success and failure patterns support full regex syntax:
+
+```bash
+# Match specific formats
+retry --success-pattern "build #\d+ completed" -- build-script.sh
+
+# Word boundaries
+retry --failure-pattern "\berror\b" -- log-parser.sh
+
+# Capture groups and alternatives
+retry --success-pattern "(deployed|updated) successfully" -- deploy.sh
 ```
 
 ## Command-Line Options
@@ -66,20 +140,25 @@ retry --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --timeout
 | `--multiplier` | | `2.0` | Multiplier for exponential backoff |
 | `--max-delay` | | `0` | Maximum delay for exponential backoff (0 = no limit) |
 | `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`) |
+| `--success-pattern` | | | Regex pattern indicating success in stdout/stderr |
+| `--failure-pattern` | | | Regex pattern indicating failure in stdout/stderr |
+| `--case-insensitive` | | `false` | Make pattern matching case-insensitive |
 | `--help` | `-h` | | Show help information |
 
 ## How It Works
 
 1. **Run your command** – `retry` executes your command exactly as you would
-2. **Check the result** – If it succeeds (exit code 0), we're done!
-3. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
-4. **Wait and retry** – If it fails, wait for the calculated delay and try again
-5. **Respect limits** – Stop after the maximum number of attempts or max delay reached
-6. **Preserve exit codes** – The final exit code matches your command's result
+2. **Check the result** – Determine success using pattern matching (if configured) or exit code
+3. **Pattern precedence** – Failure patterns override success patterns, which override exit codes
+4. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
+5. **Wait and retry** – If it fails, wait for the calculated delay and try again
+6. **Respect limits** – Stop after the maximum number of attempts or max delay reached
+7. **Preserve exit codes** – The final exit code matches your command's result
 
 ## Exit Codes
 
-- **0** – Command succeeded within the retry limit
+- **0** – Command succeeded within the retry limit (by exit code or success pattern)
+- **1** – Command failed due to failure pattern match
 - **Non-zero** – Command failed after all retry attempts (matches the command's exit code)
 
 ## Examples
@@ -126,6 +205,7 @@ The project is organized into clean, testable packages:
 - `cmd/retry` – CLI interface using Cobra
 - `pkg/executor` – Core retry logic and command execution
 - `pkg/backoff` – Backoff strategies (fixed delay and exponential backoff)
+- `pkg/conditions` – Pattern matching for success/failure detection
 
 ## Contributing
 
