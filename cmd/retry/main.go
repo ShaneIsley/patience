@@ -94,8 +94,9 @@ func executeCommand(exec *executor.Executor, args []string) error {
 }
 
 var (
-	flagConfig config.Config
-	configFile string
+	flagConfig  config.Config
+	configFile  string
+	debugConfig bool
 )
 
 var rootCmd = &cobra.Command{
@@ -104,6 +105,12 @@ var rootCmd = &cobra.Command{
 	Long: `retry is a CLI tool that executes a command and retries it on failure.
 It supports configurable retry attempts, delays between retries, and timeouts.
 
+Configuration precedence (highest to lowest):
+1. CLI flags
+2. Environment variables (RETRY_*)
+3. Configuration file
+4. Default values
+
 Configuration can be loaded from a TOML file. The tool looks for configuration files
 in the following order:
 1. File specified by --config flag
@@ -111,7 +118,16 @@ in the following order:
 3. retry.toml in current directory
 4. .retry.toml in home directory
 
-CLI flags override configuration file values.`,
+Environment variables:
+- RETRY_ATTEMPTS: Maximum number of attempts
+- RETRY_DELAY: Base delay between attempts (e.g., "1s", "500ms")
+- RETRY_TIMEOUT: Timeout per attempt (e.g., "30s", "1m")
+- RETRY_BACKOFF: Backoff strategy ("fixed" or "exponential")
+- RETRY_MAX_DELAY: Maximum delay for exponential backoff
+- RETRY_MULTIPLIER: Multiplier for exponential backoff
+- RETRY_SUCCESS_PATTERN: Regex pattern for success detection
+- RETRY_FAILURE_PATTERN: Regex pattern for failure detection
+- RETRY_CASE_INSENSITIVE: Case-insensitive pattern matching ("true" or "false")`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runRetry,
 }
@@ -120,7 +136,10 @@ func init() {
 	// Configuration file flag
 	rootCmd.Flags().StringVar(&configFile, "config", "", "Configuration file path")
 
-	// CLI flags (these will override config file values)
+	// Debug flag
+	rootCmd.Flags().BoolVar(&debugConfig, "debug-config", false, "Show configuration resolution debug information")
+
+	// CLI flags (these will override config file and environment values)
 	rootCmd.Flags().IntVarP(&flagConfig.Attempts, "attempts", "a", 0, "Maximum number of attempts")
 	rootCmd.Flags().DurationVarP(&flagConfig.Delay, "delay", "d", 0, "Base delay between attempts")
 	rootCmd.Flags().DurationVarP(&flagConfig.Timeout, "timeout", "t", 0, "Timeout per attempt")
@@ -132,10 +151,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagConfig.CaseInsensitive, "case-insensitive", false, "Make pattern matching case-insensitive")
 }
 
-// loadConfiguration loads configuration from file and merges with CLI flags
+// loadConfiguration loads configuration with full precedence support
 func loadConfiguration(cmd *cobra.Command) (*config.Config, error) {
-	var baseConfig *config.Config
-
 	// Determine config file to use
 	var configPath string
 	if configFile != "" {
@@ -156,28 +173,74 @@ func loadConfiguration(cmd *cobra.Command) (*config.Config, error) {
 		}
 	}
 
-	// Load configuration from file or use defaults
-	if configPath != "" {
-		var err error
-		baseConfig, err = config.LoadFromFile(configPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load config file %s: %w", configPath, err)
+	// Create explicit flags map and flag config
+	var effectiveFlagConfig *config.Config
+	var explicitFields map[string]bool
+
+	if hasAnyFlagsSet(cmd) {
+		effectiveFlagConfig = &flagConfig
+		explicitFields = make(map[string]bool)
+
+		// Track which flags were explicitly set
+		if cmd.Flags().Changed("attempts") {
+			explicitFields["attempts"] = true
 		}
-	} else {
-		baseConfig = config.LoadWithDefaults()
+		if cmd.Flags().Changed("delay") {
+			explicitFields["delay"] = true
+		}
+		if cmd.Flags().Changed("timeout") {
+			explicitFields["timeout"] = true
+		}
+		if cmd.Flags().Changed("backoff") {
+			explicitFields["backoff"] = true
+		}
+		if cmd.Flags().Changed("max-delay") {
+			explicitFields["max_delay"] = true
+		}
+		if cmd.Flags().Changed("multiplier") {
+			explicitFields["multiplier"] = true
+		}
+		if cmd.Flags().Changed("success-pattern") {
+			explicitFields["success_pattern"] = true
+		}
+		if cmd.Flags().Changed("failure-pattern") {
+			explicitFields["failure_pattern"] = true
+		}
+		if cmd.Flags().Changed("case-insensitive") {
+			explicitFields["case_insensitive"] = true
+		}
 	}
 
-	// Merge with CLI flags (flags override config file)
-	// Handle boolean flags specially since false is a valid override
-	finalConfig := baseConfig.MergeWithFlags(&flagConfig)
+	// Load configuration with full precedence support
+	finalConfig, debugInfo, err := config.LoadWithPrecedenceAndExplicitFlags(configPath, effectiveFlagConfig, explicitFields, debugConfig)
+	if err != nil {
+		return nil, err
+	}
 
-	// Special handling for boolean flags that were explicitly set
-	if cmd.Flags().Changed("case-insensitive") {
-		finalConfig.CaseInsensitive = flagConfig.CaseInsensitive
+	// Print debug information if requested
+	if debugConfig && debugInfo != nil {
+		debugInfo.PrintDebugInfo()
+		fmt.Println() // Add blank line after debug info
 	}
 
 	return finalConfig, nil
 }
+
+// hasAnyFlagsSet checks if any CLI flags were set
+func hasAnyFlagsSet(cmd *cobra.Command) bool {
+	flagNames := []string{
+		"attempts", "delay", "timeout", "backoff", "max-delay",
+		"multiplier", "success-pattern", "failure-pattern", "case-insensitive",
+	}
+
+	for _, flagName := range flagNames {
+		if cmd.Flags().Changed(flagName) {
+			return true
+		}
+	}
+	return false
+}
+
 func runRetry(cmd *cobra.Command, args []string) error {
 	// Load configuration
 	cfg, err := loadConfiguration(cmd)

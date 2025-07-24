@@ -455,3 +455,193 @@ func TestCLI_MetricsIntegration_Performance(t *testing.T) {
 	// (async dispatch should not block CLI execution)
 	assert.Less(t, elapsed, 3*time.Second) // Should complete quickly
 }
+
+func TestCLI_EnvironmentVariables(t *testing.T) {
+	// Save original environment
+	originalEnv := make(map[string]string)
+	envVars := []string{
+		"RETRY_ATTEMPTS", "RETRY_DELAY", "RETRY_TIMEOUT", "RETRY_BACKOFF",
+	}
+
+	for _, envVar := range envVars {
+		originalEnv[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore environment after test
+	defer func() {
+		for _, envVar := range envVars {
+			if value, exists := originalEnv[envVar]; exists && value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Given environment variables are set
+	os.Setenv("RETRY_ATTEMPTS", "2")
+	os.Setenv("RETRY_DELAY", "0.1s")
+
+	// And a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing a command that fails once then succeeds
+	cmd := exec.Command(binary, "--", "sh", "-c", "if [ ! -f /tmp/retry-test-env ]; then touch /tmp/retry-test-env && exit 1; else rm -f /tmp/retry-test-env && exit 0; fi")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should succeed using environment configuration
+	require.NoError(t, err)
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed")
+	assert.Contains(t, outputStr, "[retry] Command succeeded after 2 attempts")
+}
+
+func TestCLI_ConfigurationPrecedence(t *testing.T) {
+	// Create temporary config file
+	configContent := `
+attempts = 5
+delay = "2s"
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Save and set environment variable
+	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+		} else {
+			os.Unsetenv("RETRY_ATTEMPTS")
+		}
+	}()
+	os.Setenv("RETRY_ATTEMPTS", "3") // Should override config file
+
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with CLI flag (should override both env and config)
+	cmd := exec.Command(binary, "--config", configFile, "--attempts", "1", "--", "exit", "1")
+	output, err := cmd.CombinedOutput()
+
+	// Then CLI flag should take precedence (only 1 attempt)
+	require.Error(t, err) // Should fail since only 1 attempt
+	outputStr := string(output)
+	assert.NotContains(t, outputStr, "Attempt 2") // Should not retry
+}
+
+func TestCLI_ConfigurationValidation(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with invalid configuration
+	cmd := exec.Command(binary, "--attempts", "0", "--", "echo", "test")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should return validation error
+	require.Error(t, err)
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "validation errors")
+	assert.Contains(t, outputStr, "must be greater than 0")
+}
+
+func TestCLI_DebugConfiguration(t *testing.T) {
+	// Create temporary config file
+	configContent := `
+attempts = 5
+delay = "1s"
+`
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "retry.toml")
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with debug config flag
+	cmd := exec.Command(binary, "--config", configFile, "--debug-config", "--attempts", "2", "--", "echo", "test")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should show configuration debug information
+	require.NoError(t, err)
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "Configuration Resolution Debug Info")
+	assert.Contains(t, outputStr, "attempts")
+	assert.Contains(t, outputStr, "CLI flag")
+	assert.Contains(t, outputStr, "config file")
+}
+
+func TestCLI_EnvironmentVariableValidation(t *testing.T) {
+	// Save original environment
+	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+		} else {
+			os.Unsetenv("RETRY_ATTEMPTS")
+		}
+	}()
+
+	// Given invalid environment variable
+	os.Setenv("RETRY_ATTEMPTS", "invalid")
+
+	// And a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing a command
+	cmd := exec.Command(binary, "--", "echo", "test")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should return an error
+	require.Error(t, err)
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "Error")
+}
+
+func TestCLI_ComplexEnvironmentConfiguration(t *testing.T) {
+	// Save original environment
+	originalEnv := make(map[string]string)
+	envVars := []string{
+		"RETRY_ATTEMPTS", "RETRY_DELAY", "RETRY_BACKOFF", "RETRY_MULTIPLIER", "RETRY_MAX_DELAY",
+	}
+
+	for _, envVar := range envVars {
+		originalEnv[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore environment after test
+	defer func() {
+		for _, envVar := range envVars {
+			if value, exists := originalEnv[envVar]; exists && value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Given complex environment configuration
+	os.Setenv("RETRY_ATTEMPTS", "3")
+	os.Setenv("RETRY_DELAY", "0.1s")
+	os.Setenv("RETRY_BACKOFF", "exponential")
+	os.Setenv("RETRY_MULTIPLIER", "2.0")
+	os.Setenv("RETRY_MAX_DELAY", "1s")
+
+	// And a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing a command that fails multiple times
+	cmd := exec.Command(binary, "--", "sh", "-c", "if [ ! -f /tmp/retry-test-complex ]; then touch /tmp/retry-test-complex && exit 1; elif [ ! -f /tmp/retry-test-complex2 ]; then touch /tmp/retry-test-complex2 && exit 1; else rm -f /tmp/retry-test-complex /tmp/retry-test-complex2 && exit 0; fi")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should use exponential backoff from environment
+	require.NoError(t, err)
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "[retry] Attempt 1/3 failed")
+	assert.Contains(t, outputStr, "[retry] Attempt 2/3 failed")
+	assert.Contains(t, outputStr, "[retry] Command succeeded after 3 attempts")
+}

@@ -1,6 +1,17 @@
 # Example retry configuration file
 # Place this file as .retry.toml in your project directory or home directory
 # Or specify with --config flag
+#
+# Configuration precedence (highest to lowest):
+# 1. CLI flags (--attempts, --delay, etc.)
+# 2. Environment variables (RETRY_ATTEMPTS, RETRY_DELAY, etc.)
+# 3. Configuration file values (this file)
+# 4. Default values
+#
+# Environment variables:
+# RETRY_ATTEMPTS, RETRY_DELAY, RETRY_TIMEOUT, RETRY_BACKOFF,
+# RETRY_MAX_DELAY, RETRY_MULTIPLIER, RETRY_SUCCESS_PATTERN,
+# RETRY_FAILURE_PATTERN, RETRY_CASE_INSENSITIVE
 
 # Maximum number of retry attempts (default: 3)
 attempts = 5
