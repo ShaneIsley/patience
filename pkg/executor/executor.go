@@ -2,6 +2,9 @@ package executor
 
 import (
 	"os/exec"
+	"time"
+
+	"github.com/user/retry/pkg/backoff"
 )
 
 // CommandRunner defines the interface for executing commands
@@ -33,15 +36,26 @@ func (r *SystemCommandRunner) Run(command []string) (int, error) {
 
 // Executor handles command execution with retry logic
 type Executor struct {
-	MaxAttempts int
-	Runner      CommandRunner
+	MaxAttempts     int
+	Runner          CommandRunner
+	BackoffStrategy backoff.Strategy
 }
 
-// NewExecutor creates a new Executor with default SystemCommandRunner
+// NewExecutor creates a new Executor with default SystemCommandRunner and no backoff
 func NewExecutor(maxAttempts int) *Executor {
 	return &Executor{
-		MaxAttempts: maxAttempts,
-		Runner:      &SystemCommandRunner{},
+		MaxAttempts:     maxAttempts,
+		Runner:          &SystemCommandRunner{},
+		BackoffStrategy: nil, // No delay by default
+	}
+}
+
+// NewExecutorWithBackoff creates a new Executor with specified backoff strategy
+func NewExecutorWithBackoff(maxAttempts int, strategy backoff.Strategy) *Executor {
+	return &Executor{
+		MaxAttempts:     maxAttempts,
+		Runner:          &SystemCommandRunner{},
+		BackoffStrategy: strategy,
 	}
 }
 
@@ -86,7 +100,11 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			break
 		}
 
-		// Continue to next attempt (no delay in this cycle)
+		// Wait before next attempt if backoff strategy is configured
+		if e.BackoffStrategy != nil {
+			delay := e.BackoffStrategy.Delay(attempt)
+			time.Sleep(delay)
+		}
 	}
 
 	// All attempts failed
