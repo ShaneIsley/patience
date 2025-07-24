@@ -52,18 +52,47 @@ type Result struct {
 	ExitCode     int
 }
 
-// Run executes the given command and returns the result
+// executeAttempt runs a single command attempt and returns the exit code and error
+func (e *Executor) executeAttempt(command []string) (int, error) {
+	return e.Runner.Run(command)
+}
+
+// Run executes the given command with retry logic and returns the result
 func (e *Executor) Run(command []string) (*Result, error) {
-	exitCode, err := e.Runner.Run(command)
-	if err != nil {
-		return nil, err
+	var lastExitCode int
+	var lastError error
+
+	// Retry loop
+	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
+		exitCode, err := e.executeAttempt(command)
+		lastExitCode = exitCode
+		lastError = err
+
+		if err != nil {
+			return nil, err
+		}
+
+		// If command succeeded, return immediately
+		if exitCode == 0 {
+			return &Result{
+				AttemptCount: attempt,
+				ExitCode:     exitCode,
+				Success:      true,
+			}, nil
+		}
+
+		// If this was the last attempt, break out of loop
+		if attempt == e.MaxAttempts {
+			break
+		}
+
+		// Continue to next attempt (no delay in this cycle)
 	}
 
-	result := &Result{
-		AttemptCount: 1,
-		ExitCode:     exitCode,
-		Success:      exitCode == 0,
-	}
-
-	return result, nil
+	// All attempts failed
+	return &Result{
+		AttemptCount: e.MaxAttempts,
+		ExitCode:     lastExitCode,
+		Success:      false,
+	}, lastError
 }

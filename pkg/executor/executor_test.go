@@ -19,6 +19,22 @@ func (f *FakeCommandRunner) Run(command []string) (int, error) {
 	return f.ExitCode, f.Error
 }
 
+// FakeCommandRunnerWithSequence allows different exit codes per call
+type FakeCommandRunnerWithSequence struct {
+	ExitCodes []int
+	CallCount int
+}
+
+func (f *FakeCommandRunnerWithSequence) Run(command []string) (int, error) {
+	if f.CallCount >= len(f.ExitCodes) {
+		// Return last exit code if we've exhausted the sequence
+		return f.ExitCodes[len(f.ExitCodes)-1], nil
+	}
+	exitCode := f.ExitCodes[f.CallCount]
+	f.CallCount++
+	return exitCode, nil
+}
+
 func TestExecutor_SuccessOnFirstTry(t *testing.T) {
 	// Given an executor configured for 1 attempt
 	executor := NewExecutor(1)
@@ -85,4 +101,77 @@ func TestExecutor_WithFakeRunner(t *testing.T) {
 
 	// And the fake runner should have been called once
 	assert.Equal(t, 1, fakeRunner.CallCount)
+}
+
+func TestExecutor_SucceedsOnSecondAttempt(t *testing.T) {
+	// Given an executor configured for 3 attempts
+	fakeRunner := &FakeCommandRunnerWithSequence{
+		ExitCodes: []int{1, 0}, // Fail first, succeed second
+	}
+	executor := &Executor{
+		MaxAttempts: 3,
+		Runner:      fakeRunner,
+	}
+
+	// When Run() is called
+	result, err := executor.Run([]string{"any", "command"})
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should be success
+	assert.True(t, result.Success)
+
+	// And the command should have been executed twice
+	assert.Equal(t, 2, result.AttemptCount)
+
+	// And the final exit code should be 0
+	assert.Equal(t, 0, result.ExitCode)
+
+	// And the fake runner should have been called twice
+	assert.Equal(t, 2, fakeRunner.CallCount)
+}
+
+func TestExecutor_FailsAfterMaxAttempts(t *testing.T) {
+	// Given an executor configured for 3 attempts
+	fakeRunner := &FakeCommandRunner{
+		ExitCode: 1, // Always fails
+	}
+	executor := &Executor{
+		MaxAttempts: 3,
+		Runner:      fakeRunner,
+	}
+
+	// When Run() is called
+	result, err := executor.Run([]string{"any", "command"})
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should be failure
+	assert.False(t, result.Success)
+
+	// And the command should have been executed three times
+	assert.Equal(t, 3, result.AttemptCount)
+
+	// And the final exit code should be 1
+	assert.Equal(t, 1, result.ExitCode)
+
+	// And the fake runner should have been called three times
+	assert.Equal(t, 3, fakeRunner.CallCount)
+}
+
+func TestExecutor_ZeroAttempts(t *testing.T) {
+	// Given an executor configured for 0 attempts
+	executor := NewExecutor(0)
+
+	// When Run() is called
+	result, err := executor.Run([]string{"true"})
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should indicate failure (no attempts made)
+	assert.False(t, result.Success)
+	assert.Equal(t, 0, result.AttemptCount)
 }
