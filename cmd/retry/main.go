@@ -10,6 +10,7 @@ import (
 	"github.com/user/retry/pkg/conditions"
 	"github.com/user/retry/pkg/config"
 	"github.com/user/retry/pkg/executor"
+	"github.com/user/retry/pkg/metrics"
 	"github.com/user/retry/pkg/ui"
 )
 
@@ -69,6 +70,12 @@ func executeCommand(exec *executor.Executor, args []string) error {
 	// Show final summary if we have statistics
 	if result.Stats != nil && exec.Reporter != nil {
 		exec.Reporter.FinalSummary(result.Stats)
+	}
+
+	// Send metrics to daemon asynchronously (fire-and-forget)
+	if result.Metrics != nil {
+		metricsClient := metrics.NewClient(metrics.DefaultSocketPath())
+		metricsClient.SendMetricsAsync(result.Metrics)
 	}
 
 	// Exit with appropriate code based on success

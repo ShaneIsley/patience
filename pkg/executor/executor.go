@@ -11,6 +11,7 @@ import (
 
 	"github.com/user/retry/pkg/backoff"
 	"github.com/user/retry/pkg/conditions"
+	"github.com/user/retry/pkg/metrics"
 	"github.com/user/retry/pkg/ui"
 )
 
@@ -144,6 +145,7 @@ type Result struct {
 	TimedOut     bool
 	Reason       string
 	Stats        *ui.RunStats
+	Metrics      *metrics.RunMetrics
 }
 
 // executeAttempt runs a single command attempt and returns the output, error, and timeout status
@@ -173,6 +175,10 @@ func (e *Executor) Run(command []string) (*Result, error) {
 	// Initialize statistics tracking
 	stats := ui.NewRunStats()
 
+	// Initialize metrics tracking
+	var attemptMetrics []metrics.AttemptMetric
+	runStartTime := time.Now()
+
 	// Retry loop
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
 		// Report attempt start
@@ -181,12 +187,18 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		}
 		stats.RecordAttemptStart()
 
+		// Record attempt start time for metrics
+		attemptStartTime := time.Now()
+
 		output, err, timeout := e.executeAttempt(command)
 		lastOutput = output
 		lastError = err
 		if timeout {
 			timedOut = true
 		}
+
+		// Record attempt duration for metrics
+		attemptDuration := time.Since(attemptStartTime)
 
 		if err != nil {
 			return nil, err
@@ -214,9 +226,21 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		// Record attempt result
 		stats.RecordAttemptEnd(conditionResult.Success, conditionResult.Reason)
 
+		// Record attempt metrics
+		attemptMetrics = append(attemptMetrics, metrics.AttemptMetric{
+			Duration: attemptDuration,
+			ExitCode: output.ExitCode,
+			Success:  conditionResult.Success,
+		})
+
 		// If command succeeded, return immediately
 		if conditionResult.Success {
 			stats.Finalize(true, conditionResult.Reason)
+
+			// Create run metrics
+			totalDuration := time.Since(runStartTime)
+			runMetrics := metrics.NewRunMetrics(command, true, totalDuration, attemptMetrics)
+
 			return &Result{
 				AttemptCount: attempt,
 				ExitCode:     output.ExitCode,
@@ -224,6 +248,7 @@ func (e *Executor) Run(command []string) (*Result, error) {
 				TimedOut:     false,
 				Reason:       conditionResult.Reason,
 				Stats:        stats,
+				Metrics:      runMetrics,
 			}, nil
 		}
 
@@ -293,6 +318,10 @@ func (e *Executor) Run(command []string) (*Result, error) {
 
 	stats.Finalize(false, finalReason)
 
+	// Create run metrics for failed execution
+	totalDuration := time.Since(runStartTime)
+	runMetrics := metrics.NewRunMetrics(command, false, totalDuration, attemptMetrics)
+
 	return &Result{
 		AttemptCount: e.MaxAttempts,
 		ExitCode:     lastOutput.ExitCode,
@@ -300,5 +329,6 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		TimedOut:     timedOut,
 		Reason:       finalReason,
 		Stats:        stats,
+		Metrics:      runMetrics,
 	}, lastError
 }
