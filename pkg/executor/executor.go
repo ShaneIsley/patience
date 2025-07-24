@@ -11,6 +11,7 @@ import (
 
 	"github.com/user/retry/pkg/backoff"
 	"github.com/user/retry/pkg/conditions"
+	"github.com/user/retry/pkg/ui"
 )
 
 // CommandOutput holds the output from a command execution
@@ -92,6 +93,7 @@ type Executor struct {
 	BackoffStrategy backoff.Strategy
 	Timeout         time.Duration
 	Conditions      *conditions.Checker
+	Reporter        *ui.Reporter
 }
 
 // NewExecutor creates a new Executor with default SystemCommandRunner and no backoff
@@ -141,6 +143,7 @@ type Result struct {
 	ExitCode     int
 	TimedOut     bool
 	Reason       string
+	Stats        *ui.RunStats
 }
 
 // executeAttempt runs a single command attempt and returns the output, error, and timeout status
@@ -167,8 +170,17 @@ func (e *Executor) Run(command []string) (*Result, error) {
 	var lastError error
 	var timedOut bool
 
+	// Initialize statistics tracking
+	stats := ui.NewRunStats()
+
 	// Retry loop
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
+		// Report attempt start
+		if e.Reporter != nil {
+			e.Reporter.AttemptStart(attempt, e.MaxAttempts)
+		}
+		stats.RecordAttemptStart()
+
 		output, err, timeout := e.executeAttempt(command)
 		lastOutput = output
 		lastError = err
@@ -199,41 +211,87 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			}
 		}
 
+		// Record attempt result
+		stats.RecordAttemptEnd(conditionResult.Success, conditionResult.Reason)
+
 		// If command succeeded, return immediately
 		if conditionResult.Success {
+			stats.Finalize(true, conditionResult.Reason)
 			return &Result{
 				AttemptCount: attempt,
 				ExitCode:     output.ExitCode,
 				Success:      true,
 				TimedOut:     false,
 				Reason:       conditionResult.Reason,
+				Stats:        stats,
 			}, nil
 		}
 
 		// If this was the last attempt, break out of loop
 		if attempt == e.MaxAttempts {
+			// Report final failure (no retry)
+			if e.Reporter != nil {
+				failureReason := conditionResult.Reason
+				if timedOut {
+					failureReason = fmt.Sprintf("timeout: %s", e.Timeout)
+				}
+				e.Reporter.AttemptFailure(attempt, e.MaxAttempts, failureReason, 0)
+			}
 			break
 		}
 
-		// Wait before next attempt if backoff strategy is configured
+		// Calculate delay and report failure
+		var delay time.Duration
 		if e.BackoffStrategy != nil {
-			delay := e.BackoffStrategy.Delay(attempt)
+			delay = e.BackoffStrategy.Delay(attempt)
+		}
+
+		if e.Reporter != nil {
+			failureReason := conditionResult.Reason
+			if timedOut {
+				failureReason = fmt.Sprintf("timeout: %s", e.Timeout)
+			}
+			e.Reporter.AttemptFailure(attempt, e.MaxAttempts, failureReason, delay)
+		}
+
+		// Wait before next attempt if backoff strategy is configured
+		if delay > 0 {
 			time.Sleep(delay)
 		}
 	}
 
 	// All attempts failed
 	var finalReason string
-	if e.Conditions != nil {
-		conditionResult := e.Conditions.CheckSuccess(lastOutput.ExitCode, lastOutput.Stdout, lastOutput.Stderr)
-		finalReason = conditionResult.Reason
-	} else {
-		if lastOutput.ExitCode == 0 {
-			finalReason = "exit code 0"
+	if timedOut {
+		if e.MaxAttempts == 1 {
+			finalReason = "timeout"
 		} else {
-			finalReason = fmt.Sprintf("exit code %d", lastOutput.ExitCode)
+			finalReason = "max retries reached (timeout)"
+		}
+	} else if e.Conditions != nil {
+		conditionResult := e.Conditions.CheckSuccess(lastOutput.ExitCode, lastOutput.Stdout, lastOutput.Stderr)
+		if e.MaxAttempts == 1 {
+			finalReason = conditionResult.Reason
+		} else {
+			finalReason = "max retries reached (" + conditionResult.Reason + ")"
+		}
+	} else {
+		if e.MaxAttempts == 1 {
+			if lastOutput.ExitCode == 0 {
+				finalReason = "exit code 0"
+			} else {
+				finalReason = fmt.Sprintf("exit code %d", lastOutput.ExitCode)
+			}
+		} else {
+			if lastOutput.ExitCode == 0 {
+				finalReason = "max retries reached (exit code 0)"
+			} else {
+				finalReason = fmt.Sprintf("max retries reached (exit code %d)", lastOutput.ExitCode)
+			}
 		}
 	}
+
+	stats.Finalize(false, finalReason)
 
 	return &Result{
 		AttemptCount: e.MaxAttempts,
@@ -241,5 +299,6 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		Success:      false,
 		TimedOut:     timedOut,
 		Reason:       finalReason,
+		Stats:        stats,
 	}, lastError
 }

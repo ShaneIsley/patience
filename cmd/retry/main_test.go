@@ -304,3 +304,66 @@ attempts = "invalid"
 	// Then it should fail with config error
 	require.Error(t, err)
 }
+
+func TestCLI_StatusOutput_Success(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing a successful command
+	cmd := exec.Command(binary, "--", "echo", "success")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should succeed
+	require.NoError(t, err)
+
+	// And show status messages
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "[retry] Attempt 1/3 starting...")
+	assert.Contains(t, outputStr, "✅ [retry] Command succeeded after 1 attempt.")
+	assert.Contains(t, outputStr, "Run Statistics:")
+	assert.Contains(t, outputStr, "Total Attempts: 1")
+	assert.Contains(t, outputStr, "Successful Runs: 1")
+	assert.Contains(t, outputStr, "Failed Runs: 0")
+	assert.Contains(t, outputStr, "Final Reason: exit code 0")
+}
+
+func TestCLI_StatusOutput_Failure(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing a failing command
+	cmd := exec.Command(binary, "--attempts", "2", "--", "false")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should fail
+	require.Error(t, err)
+
+	// And show status messages
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "[retry] Attempt 1/2 starting...")
+	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed (exit code 1). Retrying in 0s.")
+	assert.Contains(t, outputStr, "[retry] Attempt 2/2 starting...")
+	assert.Contains(t, outputStr, "[retry] Attempt 2/2 failed (exit code 1).")
+	assert.Contains(t, outputStr, "❌ [retry] Command failed after 2 attempts.")
+	assert.Contains(t, outputStr, "Run Statistics:")
+	assert.Contains(t, outputStr, "Total Attempts: 2")
+	assert.Contains(t, outputStr, "Successful Runs: 0")
+	assert.Contains(t, outputStr, "Failed Runs: 2")
+	assert.Contains(t, outputStr, "Final Reason: max retries reached (exit code 1)")
+}
+
+func TestCLI_StatusOutput_WithDelay(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with delay
+	cmd := exec.Command(binary, "--attempts", "2", "--delay", "100ms", "--", "false")
+	output, err := cmd.CombinedOutput()
+
+	// Then it should fail
+	require.Error(t, err)
+
+	// And show delay in status messages
+	outputStr := string(output)
+	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed (exit code 1). Retrying in 0.1s.")
+}

@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/user/retry/pkg/backoff"
 	"github.com/user/retry/pkg/conditions"
 	"github.com/user/retry/pkg/config"
 	"github.com/user/retry/pkg/executor"
+	"github.com/user/retry/pkg/ui"
 )
 
 // createExecutor creates an executor based on the configuration
@@ -50,6 +52,10 @@ func createExecutor(cfg *config.Config) (*executor.Executor, error) {
 	// Add condition checker if configured
 	exec.Conditions = checker
 
+	// Add status reporter
+	reporter := ui.NewReporter(os.Stderr)
+	exec.Reporter = reporter
+
 	return exec, nil
 }
 
@@ -60,19 +66,23 @@ func executeCommand(exec *executor.Executor, args []string) error {
 		return fmt.Errorf("execution error: %w", err)
 	}
 
+	// Show final summary if we have statistics
+	if result.Stats != nil && exec.Reporter != nil {
+		exec.Reporter.FinalSummary(result.Stats)
+	}
+
 	// Exit with appropriate code based on success
 	if result.Success {
 		os.Exit(0)
 	} else {
 		// If failure was due to pattern matching, use exit code 1
 		// Otherwise use the original exit code
-		if result.Reason == "failure pattern matched" {
+		if strings.Contains(result.Reason, "failure pattern matched") {
 			os.Exit(1)
 		} else {
 			os.Exit(result.ExitCode)
 		}
 	}
-
 	return nil
 }
 
