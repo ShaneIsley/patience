@@ -348,3 +348,33 @@ func TestExecutor_TimeoutWithBackoff(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed, 70*time.Millisecond)
 	assert.Less(t, elapsed, 120*time.Millisecond)
 }
+
+func TestExecutor_WithExponentialBackoff(t *testing.T) {
+	// Given an executor with exponential backoff
+	strategy := backoff.NewExponential(50*time.Millisecond, 2.0, 0)
+	fakeRunner := &FakeCommandRunner{
+		ExitCode: 1, // Always fails
+	}
+	executor := &Executor{
+		MaxAttempts:     3,
+		Runner:          fakeRunner,
+		BackoffStrategy: strategy,
+	}
+
+	// When Run() is called
+	start := time.Now()
+	result, err := executor.Run([]string{"any", "command"})
+	elapsed := time.Since(start)
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should be failure after 3 attempts
+	assert.False(t, result.Success)
+	assert.Equal(t, 3, result.AttemptCount)
+
+	// And the total time should include exponential delays
+	// 50ms (first delay) + 100ms (second delay) = ~150ms
+	assert.GreaterOrEqual(t, elapsed, 140*time.Millisecond)
+	assert.Less(t, elapsed, 200*time.Millisecond)
+}

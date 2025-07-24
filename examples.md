@@ -7,14 +7,14 @@ This guide shows the most common, practical uses of `retry` that you'll encounte
 The most common use case – dealing with unreliable network connections and flaky APIs:
 
 ```bash
-# Retry a failing curl request
-retry --attempts 5 --delay 1s -- curl -f https://api.example.com/status
+# Retry a failing curl request with exponential backoff
+retry --attempts 5 --delay 1s --backoff exponential -- curl -f https://api.example.com/status
 
-# Download a file that might fail
+# Download a file that might fail (fixed delay)
 retry --attempts 3 --delay 2s -- wget https://releases.example.com/package.tar.gz
 
-# API call with timeout protection
-retry --attempts 3 --delay 2s --timeout 10s -- \
+# API call with exponential backoff and timeout protection
+retry --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --timeout 30s -- \
   curl -X POST -d '{"key":"value"}' https://api.example.com/data
 ```
 
@@ -29,8 +29,8 @@ retry --attempts 3 -- npm test
 # Wait for a local development server to start
 retry --attempts 10 --delay 1s -- curl -f http://localhost:3000
 
-# Retry package installation when registry is slow
-retry --attempts 5 --delay 3s -- npm install
+# Retry package installation with exponential backoff
+retry --attempts 5 --delay 1s --backoff exponential -- npm install
 ```
 
 ## Database Connections
@@ -59,8 +59,8 @@ Container operations that commonly need retries:
 retry --attempts 15 --delay 3s -- \
   docker exec mycontainer curl -f http://localhost/health
 
-# Pull an image when registry is flaky
-retry --attempts 3 --delay 5s -- docker pull nginx:latest
+# Pull an image when registry is flaky (exponential backoff)
+retry --attempts 3 --delay 2s --backoff exponential -- docker pull nginx:latest
 
 # Wait for container to start accepting connections
 retry --attempts 10 --delay 2s -- \
@@ -107,11 +107,11 @@ Common build and deployment scenarios:
 # Retry builds when dependencies are flaky
 retry --attempts 3 --delay 10s -- make build
 
-# Deploy when target server might be busy
-retry --attempts 5 --delay 5s -- ./deploy.sh production
+# Deploy when target server might be busy (exponential backoff)
+retry --attempts 5 --delay 2s --backoff exponential --max-delay 30s -- ./deploy.sh production
 
 # Health check after deployment
-retry --attempts 20 --delay 5s -- \
+retry --attempts 15 --delay 2s --backoff exponential -- \
   curl -f https://myapp.com/health
 ```
 
@@ -133,9 +133,41 @@ fi
 
 ```bash
 # In a deployment script
-retry --attempts 3 --delay 5s -- kubectl apply -f deployment.yaml
-retry --attempts 15 --delay 10s -- kubectl rollout status deployment/myapp
+retry --attempts 3 --delay 2s --backoff exponential -- kubectl apply -f deployment.yaml
+retry --attempts 15 --delay 5s --backoff exponential -- kubectl rollout status deployment/myapp
 ```
+
+## Backoff Strategies
+
+### Fixed Delay
+Use when you want predictable, consistent timing:
+
+```bash
+# Always wait exactly 2 seconds between attempts
+retry --attempts 5 --delay 2s -- your-command
+
+# Good for: local operations, predictable timing needs
+```
+
+### Exponential Backoff
+Use for network operations and external services (recommended):
+
+```bash
+# Wait 1s, then 2s, then 4s, then 8s...
+retry --attempts 5 --delay 1s --backoff exponential -- api-call
+
+# With custom multiplier (1s, 1.5s, 2.25s, 3.375s...)
+retry --attempts 5 --delay 1s --backoff exponential --multiplier 1.5 -- api-call
+
+# With maximum delay cap (1s, 2s, 4s, 5s, 5s...)
+retry --attempts 6 --delay 1s --backoff exponential --max-delay 5s -- api-call
+```
+
+**Why exponential backoff?**
+- Reduces load on failing services
+- Industry standard for retry logic
+- Gives services time to recover
+- Prevents "thundering herd" problems
 
 ## Quick Reference
 
@@ -145,32 +177,38 @@ retry --attempts 15 --delay 10s -- kubectl rollout status deployment/myapp
 # Basic retry (3 attempts, no delay)
 retry -- your-command
 
-# Network operations (with delay)
-retry --attempts 5 --delay 2s -- curl -f https://example.com
+# Network operations (with exponential backoff)
+retry --attempts 5 --delay 1s --backoff exponential -- curl -f https://example.com
+
+# Fixed delay for predictable timing
+retry --attempts 3 --delay 2s -- your-command
 
 # With timeout protection
 retry --attempts 3 --timeout 30s -- long-running-command
 
-# All options together
-retry --attempts 5 --delay 2s --timeout 10s -- your-command
+# All options together (exponential backoff with limits)
+retry --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --timeout 30s -- your-command
 ```
 
 ### Typical Parameters by Use Case
 
-| Use Case | Attempts | Delay | Timeout | Example |
-|----------|----------|-------|---------|---------|
-| API calls | 3-5 | 1-3s | 10-30s | `retry -a 5 -d 2s -t 15s -- curl -f api.com` |
-| File downloads | 3 | 2-5s | 60s+ | `retry -a 3 -d 5s -t 120s -- wget file.zip` |
-| Service startup | 10-20 | 1-3s | 5-10s | `retry -a 15 -d 2s -t 5s -- curl localhost:8080` |
-| Database connections | 5-10 | 2-3s | 5-10s | `retry -a 8 -d 2s -t 5s -- pg_isready` |
-| SSH connections | 3-5 | 3-5s | 10-30s | `retry -a 5 -d 3s -t 15s -- ssh user@host` |
+| Use Case | Attempts | Delay | Backoff | Timeout | Example |
+|----------|----------|-------|---------|---------|---------|
+| API calls | 3-5 | 1s | exponential | 10-30s | `retry -a 5 -d 1s --backoff exponential -t 15s -- curl -f api.com` |
+| File downloads | 3 | 2s | exponential | 60s+ | `retry -a 3 -d 2s --backoff exponential -t 120s -- wget file.zip` |
+| Service startup | 10-15 | 1s | exponential | 5-10s | `retry -a 15 -d 1s --backoff exponential -t 5s -- curl localhost:8080` |
+| Database connections | 5-8 | 1s | exponential | 5-10s | `retry -a 8 -d 1s --backoff exponential -t 5s -- pg_isready` |
+| SSH connections | 3-5 | 2s | exponential | 10-30s | `retry -a 5 -d 2s --backoff exponential -t 15s -- ssh user@host` |
+| Quick local checks | 5-10 | 500ms | fixed | 5s | `retry -a 10 -d 500ms -- test -f /tmp/ready` |
 
 ## Tips
 
 - **Start simple**: Use `retry -- command` first, then add options as needed
-- **Network calls**: Almost always want `--delay` to avoid overwhelming servers
-- **Local operations**: Usually don't need delays, just `--attempts`
+- **Network calls**: Use exponential backoff (`--backoff exponential`) to be respectful to servers
+- **Local operations**: Fixed delays or no delays work fine, just `--attempts`
 - **Long-running commands**: Always use `--timeout` to prevent hanging
+- **Production systems**: Exponential backoff with `--max-delay` prevents excessive waits
+- **Quick feedback**: Use fixed delays when you want predictable timing
 
 ---
 

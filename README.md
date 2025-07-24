@@ -10,7 +10,7 @@ We've all been there – a deployment script fails because of a temporary networ
 
 - **Simple and intuitive** – Just prefix your command with `retry`
 - **Configurable attempts** – Set how many times to try
-- **Smart delays** – Add fixed delays between attempts to avoid overwhelming services
+- **Smart backoff strategies** – Choose between fixed delays or exponential backoff
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
 - **Zero dependencies** – Single binary that works anywhere
@@ -43,14 +43,17 @@ The basic syntax is simple: `retry [flags] -- command [args...]`
 # Retry a flaky curl command up to 5 times
 retry --attempts 5 -- curl https://api.example.com/status
 
-# Add a 2-second delay between attempts
+# Add a 2-second fixed delay between attempts
 retry --attempts 3 --delay 2s -- ping -c 1 google.com
+
+# Use exponential backoff (1s, 2s, 4s, 8s...)
+retry --attempts 5 --delay 1s --backoff exponential -- flaky-api-call
 
 # Set a timeout for each attempt
 retry --timeout 30s -- wget https://large-file.example.com/download
 
-# Combine all options
-retry --attempts 5 --delay 1s --timeout 10s -- your-flaky-command
+# Combine all options with exponential backoff and max delay
+retry --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --timeout 30s -- deployment-script
 ```
 
 ## Command-Line Options
@@ -58,7 +61,10 @@ retry --attempts 5 --delay 1s --timeout 10s -- your-flaky-command
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--attempts` | `-a` | `3` | Maximum number of attempts |
-| `--delay` | `-d` | `0` | Fixed delay between attempts (e.g., `1s`, `500ms`) |
+| `--delay` | `-d` | `0` | Base delay between attempts (e.g., `1s`, `500ms`) |
+| `--backoff` | | `fixed` | Backoff strategy: `fixed` or `exponential` |
+| `--multiplier` | | `2.0` | Multiplier for exponential backoff |
+| `--max-delay` | | `0` | Maximum delay for exponential backoff (0 = no limit) |
 | `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`) |
 | `--help` | `-h` | | Show help information |
 
@@ -66,9 +72,10 @@ retry --attempts 5 --delay 1s --timeout 10s -- your-flaky-command
 
 1. **Run your command** – `retry` executes your command exactly as you would
 2. **Check the result** – If it succeeds (exit code 0), we're done!
-3. **Wait and retry** – If it fails, wait for the specified delay and try again
-4. **Respect limits** – Stop after the maximum number of attempts
-5. **Preserve exit codes** – The final exit code matches your command's result
+3. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
+4. **Wait and retry** – If it fails, wait for the calculated delay and try again
+5. **Respect limits** – Stop after the maximum number of attempts or max delay reached
+6. **Preserve exit codes** – The final exit code matches your command's result
 
 ## Exit Codes
 
@@ -118,7 +125,7 @@ The project is organized into clean, testable packages:
 
 - `cmd/retry` – CLI interface using Cobra
 - `pkg/executor` – Core retry logic and command execution
-- `pkg/backoff` – Delay strategies (currently fixed delay, extensible for exponential backoff)
+- `pkg/backoff` – Backoff strategies (fixed delay and exponential backoff)
 
 ## Contributing
 

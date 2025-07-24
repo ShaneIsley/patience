@@ -12,18 +12,32 @@ import (
 
 // Config holds the CLI configuration
 type Config struct {
-	Attempts int
-	Delay    time.Duration
-	Timeout  time.Duration
+	Attempts    int
+	Delay       time.Duration
+	Timeout     time.Duration
+	BackoffType string
+	MaxDelay    time.Duration
+	Multiplier  float64
 }
 
 // createExecutor creates an executor based on the configuration
 func createExecutor(config Config) *executor.Executor {
-	if config.Delay > 0 && config.Timeout > 0 {
-		strategy := backoff.NewFixed(config.Delay)
+	var strategy backoff.Strategy
+
+	// Create backoff strategy if delay is specified
+	if config.Delay > 0 {
+		switch config.BackoffType {
+		case "exponential":
+			strategy = backoff.NewExponential(config.Delay, config.Multiplier, config.MaxDelay)
+		default: // "fixed" or empty
+			strategy = backoff.NewFixed(config.Delay)
+		}
+	}
+
+	// Create executor based on configuration
+	if strategy != nil && config.Timeout > 0 {
 		return executor.NewExecutorWithBackoffAndTimeout(config.Attempts, strategy, config.Timeout)
-	} else if config.Delay > 0 {
-		strategy := backoff.NewFixed(config.Delay)
+	} else if strategy != nil {
 		return executor.NewExecutorWithBackoff(config.Attempts, strategy)
 	} else if config.Timeout > 0 {
 		return executor.NewExecutorWithTimeout(config.Attempts, config.Timeout)
@@ -64,8 +78,11 @@ It supports configurable retry attempts, delays between retries, and timeouts.`,
 
 func init() {
 	rootCmd.Flags().IntVarP(&config.Attempts, "attempts", "a", 3, "Maximum number of attempts")
-	rootCmd.Flags().DurationVarP(&config.Delay, "delay", "d", 0, "Fixed delay between attempts")
+	rootCmd.Flags().DurationVarP(&config.Delay, "delay", "d", 0, "Base delay between attempts")
 	rootCmd.Flags().DurationVarP(&config.Timeout, "timeout", "t", 0, "Timeout per attempt")
+	rootCmd.Flags().StringVar(&config.BackoffType, "backoff", "fixed", "Backoff strategy: fixed or exponential")
+	rootCmd.Flags().DurationVar(&config.MaxDelay, "max-delay", 0, "Maximum delay for exponential backoff (0 = no limit)")
+	rootCmd.Flags().Float64Var(&config.Multiplier, "multiplier", 2.0, "Multiplier for exponential backoff")
 }
 
 func runRetry(cmd *cobra.Command, args []string) error {

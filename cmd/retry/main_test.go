@@ -119,3 +119,39 @@ func TestCLI_InvalidCommand(t *testing.T) {
 	// Then it should fail with usage error
 	require.Error(t, err)
 }
+
+func TestCLI_ExponentialBackoff(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with exponential backoff
+	cmd := exec.Command(binary, "--attempts", "2", "--delay", "50ms", "--backoff", "exponential", "--", "false")
+	err := cmd.Run()
+
+	// Then it should still fail but use exponential delays
+	require.Error(t, err)
+	if exitError, ok := err.(*exec.ExitError); ok {
+		assert.Equal(t, 1, exitError.ExitCode())
+	}
+}
+
+func TestCLI_ExponentialBackoffWithMaxDelay(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with exponential backoff and max delay
+	cmd := exec.Command(binary,
+		"--attempts", "3",
+		"--delay", "100ms",
+		"--backoff", "exponential",
+		"--max-delay", "150ms",
+		"--multiplier", "2.0",
+		"--", "false")
+	err := cmd.Run()
+
+	// Then it should fail with capped delays
+	require.Error(t, err)
+	if exitError, ok := err.(*exec.ExitError); ok {
+		assert.Equal(t, 1, exitError.ExitCode())
+	}
+}
