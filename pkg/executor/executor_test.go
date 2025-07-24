@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/retry/pkg/backoff"
+	"github.com/user/retry/pkg/conditions"
 )
 
 // FakeCommandRunner is a test double for CommandRunner
@@ -24,6 +25,24 @@ func (f *FakeCommandRunner) Run(command []string) (int, error) {
 func (f *FakeCommandRunner) RunWithContext(ctx context.Context, command []string) (int, error) {
 	f.CallCount++
 	return f.ExitCode, f.Error
+}
+
+func (f *FakeCommandRunner) RunWithOutput(command []string) (CommandOutput, error) {
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: f.ExitCode,
+		Stdout:   "",
+		Stderr:   "",
+	}, f.Error
+}
+
+func (f *FakeCommandRunner) RunWithOutputAndContext(ctx context.Context, command []string) (CommandOutput, error) {
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: f.ExitCode,
+		Stdout:   "",
+		Stderr:   "",
+	}, f.Error
 }
 
 // FakeCommandRunnerWithSequence allows different exit codes per call
@@ -44,6 +63,40 @@ func (f *FakeCommandRunnerWithSequence) RunWithContext(ctx context.Context, comm
 	exitCode := f.ExitCodes[f.CallCount]
 	f.CallCount++
 	return exitCode, nil
+}
+
+func (f *FakeCommandRunnerWithSequence) RunWithOutput(command []string) (CommandOutput, error) {
+	if f.CallCount >= len(f.ExitCodes) {
+		return CommandOutput{
+			ExitCode: f.ExitCodes[len(f.ExitCodes)-1],
+			Stdout:   "",
+			Stderr:   "",
+		}, nil
+	}
+	exitCode := f.ExitCodes[f.CallCount]
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: exitCode,
+		Stdout:   "",
+		Stderr:   "",
+	}, nil
+}
+
+func (f *FakeCommandRunnerWithSequence) RunWithOutputAndContext(ctx context.Context, command []string) (CommandOutput, error) {
+	if f.CallCount >= len(f.ExitCodes) {
+		return CommandOutput{
+			ExitCode: f.ExitCodes[len(f.ExitCodes)-1],
+			Stdout:   "",
+			Stderr:   "",
+		}, nil
+	}
+	exitCode := f.ExitCodes[f.CallCount]
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: exitCode,
+		Stdout:   "",
+		Stderr:   "",
+	}, nil
 }
 
 func TestExecutor_SuccessOnFirstTry(t *testing.T) {
@@ -377,4 +430,97 @@ func TestExecutor_WithExponentialBackoff(t *testing.T) {
 	// 50ms (first delay) + 100ms (second delay) = ~150ms
 	assert.GreaterOrEqual(t, elapsed, 140*time.Millisecond)
 	assert.Less(t, elapsed, 200*time.Millisecond)
+}
+
+// FakeCommandRunnerWithOutput allows setting custom output
+type FakeCommandRunnerWithOutput struct {
+	ExitCode  int
+	Stdout    string
+	Stderr    string
+	Error     error
+	CallCount int
+}
+
+func (f *FakeCommandRunnerWithOutput) Run(command []string) (int, error) {
+	f.CallCount++
+	return f.ExitCode, f.Error
+}
+
+func (f *FakeCommandRunnerWithOutput) RunWithContext(ctx context.Context, command []string) (int, error) {
+	f.CallCount++
+	return f.ExitCode, f.Error
+}
+
+func (f *FakeCommandRunnerWithOutput) RunWithOutput(command []string) (CommandOutput, error) {
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: f.ExitCode,
+		Stdout:   f.Stdout,
+		Stderr:   f.Stderr,
+	}, f.Error
+}
+
+func (f *FakeCommandRunnerWithOutput) RunWithOutputAndContext(ctx context.Context, command []string) (CommandOutput, error) {
+	f.CallCount++
+	return CommandOutput{
+		ExitCode: f.ExitCode,
+		Stdout:   f.Stdout,
+		Stderr:   f.Stderr,
+	}, f.Error
+}
+
+func TestExecutor_WithSuccessPattern(t *testing.T) {
+	// Given an executor with success pattern matching
+	checker, err := conditions.NewChecker("deployment successful", "", false)
+	require.NoError(t, err)
+
+	fakeRunner := &FakeCommandRunnerWithOutput{
+		ExitCode: 1, // Non-zero exit code
+		Stdout:   "deployment successful",
+		Stderr:   "",
+	}
+	executor := &Executor{
+		MaxAttempts: 1,
+		Runner:      fakeRunner,
+		Conditions:  checker,
+	}
+
+	// When Run() is called
+	result, err := executor.Run([]string{"deploy"})
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should be success due to pattern match
+	assert.True(t, result.Success)
+	assert.Equal(t, "success pattern matched", result.Reason)
+	assert.Equal(t, 1, result.ExitCode) // Exit code preserved
+}
+
+func TestExecutor_WithFailurePattern(t *testing.T) {
+	// Given an executor with failure pattern matching
+	checker, err := conditions.NewChecker("", "(?i)error", false)
+	require.NoError(t, err)
+
+	fakeRunner := &FakeCommandRunnerWithOutput{
+		ExitCode: 0, // Zero exit code
+		Stdout:   "",
+		Stderr:   "Error: connection failed",
+	}
+	executor := &Executor{
+		MaxAttempts: 1,
+		Runner:      fakeRunner,
+		Conditions:  checker,
+	}
+
+	// When Run() is called
+	result, err := executor.Run([]string{"test"})
+
+	// Then there should be no error
+	require.NoError(t, err)
+
+	// And the result should be failure due to pattern match
+	assert.False(t, result.Success)
+	assert.Equal(t, "failure pattern matched", result.Reason)
+	assert.Equal(t, 0, result.ExitCode) // Exit code preserved
 }

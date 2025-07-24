@@ -155,3 +155,49 @@ func TestCLI_ExponentialBackoffWithMaxDelay(t *testing.T) {
 		assert.Equal(t, 1, exitError.ExitCode())
 	}
 }
+
+func TestCLI_SuccessPattern(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with success pattern that matches
+	cmd := exec.Command(binary,
+		"--success-pattern", "success",
+		"--", "sh", "-c", "echo 'deployment success'; exit 1")
+	err := cmd.Run()
+
+	// Then it should succeed despite exit code 1
+	require.NoError(t, err)
+}
+
+func TestCLI_FailurePattern(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with failure pattern that matches
+	cmd := exec.Command(binary,
+		"--failure-pattern", "(?i)error",
+		"--", "sh", "-c", "echo 'Error occurred'; exit 0")
+	err := cmd.Run()
+
+	// Then it should fail despite exit code 0
+	require.Error(t, err)
+	if exitError, ok := err.(*exec.ExitError); ok {
+		assert.Equal(t, 1, exitError.ExitCode()) // Pattern match failure uses exit code 1
+	}
+}
+
+func TestCLI_CaseInsensitivePattern(t *testing.T) {
+	// Given a compiled retry binary
+	binary := buildBinary(t)
+
+	// When executing with case-insensitive success pattern
+	cmd := exec.Command(binary,
+		"--success-pattern", "SUCCESS",
+		"--case-insensitive",
+		"--", "sh", "-c", "echo 'deployment success'; exit 1")
+	err := cmd.Run()
+
+	// Then it should succeed with case-insensitive matching
+	require.NoError(t, err)
+}

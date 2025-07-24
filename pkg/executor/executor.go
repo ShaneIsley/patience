@@ -1,18 +1,31 @@
 package executor
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"time"
 
 	"github.com/user/retry/pkg/backoff"
+	"github.com/user/retry/pkg/conditions"
 )
+
+// CommandOutput holds the output from a command execution
+type CommandOutput struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+}
 
 // CommandRunner defines the interface for executing commands
 type CommandRunner interface {
 	Run(command []string) (int, error)
 	RunWithContext(ctx context.Context, command []string) (int, error)
+	RunWithOutput(command []string) (CommandOutput, error)
+	RunWithOutputAndContext(ctx context.Context, command []string) (CommandOutput, error)
 }
 
 // SystemCommandRunner implements CommandRunner using os/exec
@@ -25,28 +38,51 @@ func (r *SystemCommandRunner) Run(command []string) (int, error) {
 
 // RunWithContext executes a command with context support for timeouts
 func (r *SystemCommandRunner) RunWithContext(ctx context.Context, command []string) (int, error) {
+	output, err := r.RunWithOutputAndContext(ctx, command)
+	return output.ExitCode, err
+}
+
+// RunWithOutput executes a command and captures its output
+func (r *SystemCommandRunner) RunWithOutput(command []string) (CommandOutput, error) {
+	return r.RunWithOutputAndContext(context.Background(), command)
+}
+
+// RunWithOutputAndContext executes a command with context and captures output
+func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, command []string) (CommandOutput, error) {
 	if len(command) == 0 {
-		return -1, nil
+		return CommandOutput{ExitCode: -1}, nil
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
-	// Forward stdout and stderr to maintain CLI behavior
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	// Capture stdout and stderr while also forwarding to terminal
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
 	err := cmd.Run()
+
+	output := CommandOutput{
+		Stdout: stdoutBuf.String(),
+		Stderr: stderrBuf.String(),
+	}
 
 	if err != nil {
 		// Check for context deadline exceeded (timeout)
 		if ctx.Err() == context.DeadlineExceeded {
-			return -1, context.DeadlineExceeded
+			output.ExitCode = -1
+			return output, context.DeadlineExceeded
 		}
 		if exitError, ok := err.(*exec.ExitError); ok {
-			return exitError.ExitCode(), nil
+			output.ExitCode = exitError.ExitCode()
+			return output, nil
 		}
-		return -1, err
+		output.ExitCode = -1
+		return output, err
 	}
 
-	return 0, nil
+	output.ExitCode = 0
+	return output, nil
 }
 
 // Executor handles command execution with retry logic
@@ -55,6 +91,7 @@ type Executor struct {
 	Runner          CommandRunner
 	BackoffStrategy backoff.Strategy
 	Timeout         time.Duration
+	Conditions      *conditions.Checker
 }
 
 // NewExecutor creates a new Executor with default SystemCommandRunner and no backoff
@@ -103,36 +140,37 @@ type Result struct {
 	AttemptCount int
 	ExitCode     int
 	TimedOut     bool
+	Reason       string
 }
 
-// executeAttempt runs a single command attempt and returns the exit code, error, and timeout status
-func (e *Executor) executeAttempt(command []string) (int, error, bool) {
+// executeAttempt runs a single command attempt and returns the output, error, and timeout status
+func (e *Executor) executeAttempt(command []string) (CommandOutput, error, bool) {
 	if e.Timeout > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
 		defer cancel()
 
-		exitCode, err := e.Runner.RunWithContext(ctx, command)
+		output, err := e.Runner.RunWithOutputAndContext(ctx, command)
 		if err == context.DeadlineExceeded {
-			return -1, nil, true // Timeout occurred
+			return CommandOutput{ExitCode: -1}, nil, true // Timeout occurred
 		}
-		return exitCode, err, false
+		return output, err, false
 	}
 
 	// No timeout configured, use regular run
-	exitCode, err := e.Runner.Run(command)
-	return exitCode, err, false
+	output, err := e.Runner.RunWithOutput(command)
+	return output, err, false
 }
 
 // Run executes the given command with retry logic and returns the result
 func (e *Executor) Run(command []string) (*Result, error) {
-	var lastExitCode int
+	var lastOutput CommandOutput
 	var lastError error
 	var timedOut bool
 
 	// Retry loop
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
-		exitCode, err, timeout := e.executeAttempt(command)
-		lastExitCode = exitCode
+		output, err, timeout := e.executeAttempt(command)
+		lastOutput = output
 		lastError = err
 		if timeout {
 			timedOut = true
@@ -142,13 +180,33 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			return nil, err
 		}
 
+		// Check success conditions (patterns first, then exit code)
+		var conditionResult conditions.Result
+		if e.Conditions != nil {
+			conditionResult = e.Conditions.CheckSuccess(output.ExitCode, output.Stdout, output.Stderr)
+		} else {
+			// Default behavior: success if exit code is 0
+			if output.ExitCode == 0 {
+				conditionResult = conditions.Result{
+					Success: true,
+					Reason:  "exit code 0",
+				}
+			} else {
+				conditionResult = conditions.Result{
+					Success: false,
+					Reason:  fmt.Sprintf("exit code %d", output.ExitCode),
+				}
+			}
+		}
+
 		// If command succeeded, return immediately
-		if exitCode == 0 {
+		if conditionResult.Success {
 			return &Result{
 				AttemptCount: attempt,
-				ExitCode:     exitCode,
+				ExitCode:     output.ExitCode,
 				Success:      true,
 				TimedOut:     false,
+				Reason:       conditionResult.Reason,
 			}, nil
 		}
 
@@ -165,10 +223,23 @@ func (e *Executor) Run(command []string) (*Result, error) {
 	}
 
 	// All attempts failed
+	var finalReason string
+	if e.Conditions != nil {
+		conditionResult := e.Conditions.CheckSuccess(lastOutput.ExitCode, lastOutput.Stdout, lastOutput.Stderr)
+		finalReason = conditionResult.Reason
+	} else {
+		if lastOutput.ExitCode == 0 {
+			finalReason = "exit code 0"
+		} else {
+			finalReason = fmt.Sprintf("exit code %d", lastOutput.ExitCode)
+		}
+	}
+
 	return &Result{
 		AttemptCount: e.MaxAttempts,
-		ExitCode:     lastExitCode,
+		ExitCode:     lastOutput.ExitCode,
 		Success:      false,
 		TimedOut:     timedOut,
+		Reason:       finalReason,
 	}, lastError
 }
