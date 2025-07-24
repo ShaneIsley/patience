@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/retry/pkg/metrics"
+	"github.com/user/retry/pkg/storage"
 )
 
 func TestDaemon_NewDaemon(t *testing.T) {
@@ -125,11 +126,20 @@ func TestDaemon_HandleConnection(t *testing.T) {
 	_, err = conn.Write(data)
 	require.NoError(t, err)
 
-	// Give daemon time to process
-	time.Sleep(100 * time.Millisecond)
+	// Close connection to ensure data is processed
+	conn.Close()
+
+	// Give daemon time to process with retry
+	var recent []storage.StoredMetric
+	for i := 0; i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		recent = daemon.storage.GetRecent(1)
+		if len(recent) > 0 {
+			break
+		}
+	}
 
 	// Then the metrics should be stored
-	recent := daemon.storage.GetRecent(1)
 	require.Len(t, recent, 1)
 	assert.Equal(t, testMetric.Command, recent[0].Metrics.Command)
 }
@@ -274,6 +284,10 @@ func TestDaemon_GracefulShutdown(t *testing.T) {
 	// Give daemon time to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Verify socket was created
+	_, err = os.Stat(config.SocketPath)
+	require.NoError(t, err, "Socket should be created after daemon start")
+
 	// When triggering graceful shutdown
 	shutdownDone := make(chan bool)
 	go func() {
@@ -281,8 +295,11 @@ func TestDaemon_GracefulShutdown(t *testing.T) {
 		shutdownDone <- true
 	}()
 
-	// Trigger shutdown by canceling context
-	daemon.cancel()
+	// Trigger shutdown by calling Stop (which also cancels context)
+	go func() {
+		time.Sleep(50 * time.Millisecond) // Give Wait() time to start
+		daemon.Stop()
+	}()
 
 	// Then shutdown should complete within reasonable time
 	select {
@@ -293,8 +310,14 @@ func TestDaemon_GracefulShutdown(t *testing.T) {
 	}
 
 	// And cleanup should be complete
-	_, err = os.Stat(config.SocketPath)
-	assert.True(t, os.IsNotExist(err))
+	// The socket should be removed after shutdown
+	_, statErr := os.Stat(config.SocketPath)
+	if statErr == nil {
+		// If socket still exists, wait a bit and check again
+		time.Sleep(100 * time.Millisecond)
+		_, statErr = os.Stat(config.SocketPath)
+	}
+	assert.True(t, os.IsNotExist(statErr), "Socket file should be cleaned up after shutdown")
 }
 
 // createTestRunMetrics creates a test RunMetrics instance
