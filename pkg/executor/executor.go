@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"time"
 
@@ -29,6 +30,9 @@ func (r *SystemCommandRunner) RunWithContext(ctx context.Context, command []stri
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	// Forward stdout and stderr to maintain CLI behavior
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 
 	if err != nil {
