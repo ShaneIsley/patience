@@ -54,3 +54,21 @@ coverage.out
 .env
 .env.local
 config.local.*
+
+# Project binaries
+patience
+patienced
+
+# Daemon and runtime files
+*.sock
+*.pid
+/tmp/
+/var/
+
+# Test artifacts
+test-*
+*_test_*
+
+# Daemon logs
+daemon.log
+daemon.error.log
