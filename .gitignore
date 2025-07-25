@@ -72,3 +72,7 @@ test-*
 # Daemon logs
 daemon.log
 daemon.error.log
+
+# Development artifacts
+TDD-Implementation-Plan.md
+*-Implementation-Plan.md
