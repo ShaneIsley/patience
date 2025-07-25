@@ -104,3 +104,36 @@ func (j *Jitter) Delay(attempt int) time.Duration {
 	// Return random delay between 0 and exponential delay (full jitter)
 	return time.Duration(rand.Float64() * exponentialDelay)
 }
+
+// Linear implements a linear backoff strategy with predictable incremental delays
+type Linear struct {
+	Increment time.Duration
+	MaxDelay  time.Duration
+}
+
+// NewLinear creates a new Linear backoff strategy
+// increment is the amount to increase delay by each attempt
+// maxDelay is the maximum delay (0 means no limit)
+func NewLinear(increment time.Duration, maxDelay time.Duration) *Linear {
+	return &Linear{
+		Increment: increment,
+		MaxDelay:  maxDelay,
+	}
+}
+
+// Delay returns the linearly increasing delay for the given attempt
+func (l *Linear) Delay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return l.Increment
+	}
+
+	// Calculate linear delay: increment * attempt
+	delay := time.Duration(attempt) * l.Increment
+
+	// Apply max delay cap if set
+	if l.MaxDelay > 0 && delay > l.MaxDelay {
+		delay = l.MaxDelay
+	}
+
+	return delay
+}

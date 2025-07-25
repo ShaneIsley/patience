@@ -162,3 +162,60 @@ func TestJitter_EdgeCases(t *testing.T) {
 	assert.GreaterOrEqual(t, delayNeg, time.Duration(0))
 	assert.LessOrEqual(t, delayNeg, 100*time.Millisecond)
 }
+
+func TestLinear_DelayIncreasesLinearly(t *testing.T) {
+	// Given a linear backoff strategy with 100ms increment
+	linear := NewLinear(100*time.Millisecond, 0)
+
+	// When Delay() is called for different attempts
+	delay1 := linear.Delay(1) // First retry: 100ms
+	delay2 := linear.Delay(2) // Second retry: 200ms
+	delay3 := linear.Delay(3) // Third retry: 300ms
+	delay4 := linear.Delay(4) // Fourth retry: 400ms
+
+	// Then delays should increase linearly
+	assert.Equal(t, 100*time.Millisecond, delay1)
+	assert.Equal(t, 200*time.Millisecond, delay2)
+	assert.Equal(t, 300*time.Millisecond, delay3)
+	assert.Equal(t, 400*time.Millisecond, delay4)
+}
+
+func TestLinear_WithMaxDelay(t *testing.T) {
+	// Given a linear backoff with max delay cap
+	linear := NewLinear(100*time.Millisecond, 250*time.Millisecond)
+
+	// When Delay() is called for attempts that would exceed max
+	delay1 := linear.Delay(1) // 100ms
+	delay2 := linear.Delay(2) // 200ms
+	delay3 := linear.Delay(3) // Would be 300ms, capped to 250ms
+	delay4 := linear.Delay(4) // Would be 400ms, capped to 250ms
+
+	// Then delays should be capped at max delay
+	assert.Equal(t, 100*time.Millisecond, delay1)
+	assert.Equal(t, 200*time.Millisecond, delay2)
+	assert.Equal(t, 250*time.Millisecond, delay3)
+	assert.Equal(t, 250*time.Millisecond, delay4)
+}
+
+func TestLinear_EdgeCases(t *testing.T) {
+	linear := NewLinear(100*time.Millisecond, 0)
+
+	// Test attempt 0 and negative attempts
+	delay0 := linear.Delay(0)
+	delayNeg := linear.Delay(-1)
+
+	// Should return increment for invalid attempts
+	assert.Equal(t, 100*time.Millisecond, delay0)
+	assert.Equal(t, 100*time.Millisecond, delayNeg)
+}
+
+func TestLinear_NoMaxDelay(t *testing.T) {
+	// Given linear backoff with no max delay (0)
+	linear := NewLinear(50*time.Millisecond, 0)
+
+	// When calculating delay for high attempt numbers
+	delay10 := linear.Delay(10) // 50ms * 10 = 500ms
+
+	// Then delay should not be capped
+	assert.Equal(t, 500*time.Millisecond, delay10)
+}
