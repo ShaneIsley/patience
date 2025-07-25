@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/shaneisley/patience/pkg/backoff"
 	"github.com/shaneisley/patience/pkg/conditions"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // FakeCommandRunner is a test double for CommandRunner
