@@ -219,3 +219,96 @@ func TestLinear_NoMaxDelay(t *testing.T) {
 	// Then delay should not be capped
 	assert.Equal(t, 500*time.Millisecond, delay10)
 }
+
+func TestDecorrelatedJitter_FirstAttempt(t *testing.T) {
+	// Given a decorrelated jitter backoff strategy
+	decorrelated := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 0)
+
+	// When Delay() is called for the first attempt
+	delay1 := decorrelated.Delay(1)
+
+	// Then delay should be between base delay and base delay * multiplier
+	assert.GreaterOrEqual(t, delay1, 100*time.Millisecond, "First delay should be >= base delay")
+	assert.LessOrEqual(t, delay1, 300*time.Millisecond, "First delay should be <= base delay * multiplier")
+}
+
+func TestDecorrelatedJitter_DelayWithinBounds(t *testing.T) {
+	// Given a decorrelated jitter backoff strategy
+	decorrelated := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 0)
+
+	// When Delay() is called for multiple attempts
+	var previousDelay time.Duration
+	for attempt := 1; attempt <= 5; attempt++ {
+		delay := decorrelated.Delay(attempt)
+
+		if attempt == 1 {
+			// First attempt: should be between base delay and base delay * multiplier
+			assert.GreaterOrEqual(t, delay, 100*time.Millisecond, "Delay should be >= base delay for attempt %d", attempt)
+			assert.LessOrEqual(t, delay, 300*time.Millisecond, "Delay should be <= base delay * multiplier for attempt %d", attempt)
+		} else {
+			// Subsequent attempts: should be between base delay and previous delay * multiplier
+			maxDelay := time.Duration(float64(previousDelay) * 3.0)
+			assert.GreaterOrEqual(t, delay, 100*time.Millisecond, "Delay should be >= base delay for attempt %d", attempt)
+			assert.LessOrEqual(t, delay, maxDelay, "Delay should be <= previous delay * multiplier for attempt %d", attempt)
+		}
+		previousDelay = delay
+	}
+}
+
+func TestDecorrelatedJitter_IsRandom(t *testing.T) {
+	// Given a decorrelated jitter backoff strategy
+	decorrelated := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 0)
+
+	// When Delay() is called multiple times for the same attempt sequence
+	delays1 := make([]time.Duration, 3)
+	delays2 := make([]time.Duration, 3)
+
+	// First sequence
+	for i := 0; i < 3; i++ {
+		delays1[i] = decorrelated.Delay(i + 1)
+	}
+
+	// Reset and second sequence
+	decorrelated2 := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 0)
+	for i := 0; i < 3; i++ {
+		delays2[i] = decorrelated2.Delay(i + 1)
+	}
+
+	// Then at least some delays should be different (randomness)
+	different := false
+	for i := 0; i < 3; i++ {
+		if delays1[i] != delays2[i] {
+			different = true
+			break
+		}
+	}
+	assert.True(t, different, "Decorrelated jitter should produce different sequences")
+}
+
+func TestDecorrelatedJitter_WithMaxDelay(t *testing.T) {
+	// Given a decorrelated jitter with max delay cap
+	decorrelated := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 500*time.Millisecond)
+
+	// When Delay() is called for many attempts
+	for attempt := 1; attempt <= 10; attempt++ {
+		delay := decorrelated.Delay(attempt)
+
+		// Then delay should never exceed max delay
+		assert.LessOrEqual(t, delay, 500*time.Millisecond, "Delay should be capped at max delay for attempt %d", attempt)
+		assert.GreaterOrEqual(t, delay, 100*time.Millisecond, "Delay should be >= base delay for attempt %d", attempt)
+	}
+}
+
+func TestDecorrelatedJitter_EdgeCases(t *testing.T) {
+	decorrelated := NewDecorrelatedJitter(100*time.Millisecond, 3.0, 0)
+
+	// Test attempt 0 and negative attempts
+	delay0 := decorrelated.Delay(0)
+	delayNeg := decorrelated.Delay(-1)
+
+	// Should return delay between base delay and base delay * multiplier for invalid attempts
+	assert.GreaterOrEqual(t, delay0, 100*time.Millisecond)
+	assert.LessOrEqual(t, delay0, 300*time.Millisecond)
+	assert.GreaterOrEqual(t, delayNeg, 100*time.Millisecond)
+	assert.LessOrEqual(t, delayNeg, 300*time.Millisecond)
+}

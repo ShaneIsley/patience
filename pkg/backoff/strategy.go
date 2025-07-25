@@ -137,3 +137,57 @@ func (l *Linear) Delay(attempt int) time.Duration {
 
 	return delay
 }
+
+// DecorrelatedJitter implements the AWS-recommended decorrelated jitter strategy
+// that uses the previous delay to calculate the next delay, creating better distribution
+type DecorrelatedJitter struct {
+	BaseDelay     time.Duration
+	Multiplier    float64
+	MaxDelay      time.Duration
+	previousDelay time.Duration
+}
+
+// NewDecorrelatedJitter creates a new DecorrelatedJitter backoff strategy
+// baseDelay is the initial delay, multiplier is the factor for the upper bound
+// maxDelay is the maximum delay (0 means no limit)
+func NewDecorrelatedJitter(baseDelay time.Duration, multiplier float64, maxDelay time.Duration) *DecorrelatedJitter {
+	return &DecorrelatedJitter{
+		BaseDelay:     baseDelay,
+		Multiplier:    multiplier,
+		MaxDelay:      maxDelay,
+		previousDelay: 0, // No previous delay initially
+	}
+}
+
+// Delay returns a decorrelated jitter delay based on the previous delay
+// Formula: random_between(base_delay, previous_delay * multiplier)
+func (d *DecorrelatedJitter) Delay(attempt int) time.Duration {
+	var upperBound time.Duration
+
+	if attempt <= 0 || d.previousDelay == 0 {
+		// For first attempt or invalid attempts, use base delay * multiplier as upper bound
+		upperBound = time.Duration(float64(d.BaseDelay) * d.Multiplier)
+	} else {
+		// For subsequent attempts, use previous delay * multiplier as upper bound
+		upperBound = time.Duration(float64(d.previousDelay) * d.Multiplier)
+	}
+
+	// Apply max delay cap if set
+	if d.MaxDelay > 0 && upperBound > d.MaxDelay {
+		upperBound = d.MaxDelay
+	}
+
+	// Ensure upper bound is at least base delay
+	if upperBound < d.BaseDelay {
+		upperBound = d.BaseDelay
+	}
+
+	// Calculate random delay between base delay and upper bound
+	delayRange := upperBound - d.BaseDelay
+	randomDelay := d.BaseDelay + time.Duration(rand.Float64()*float64(delayRange))
+
+	// Store this delay as the previous delay for next calculation
+	d.previousDelay = randomDelay
+
+	return randomDelay
+}
