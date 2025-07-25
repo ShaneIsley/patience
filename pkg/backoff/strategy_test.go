@@ -95,3 +95,70 @@ func TestExponential_NoMaxDelay(t *testing.T) {
 	expected := 100 * time.Millisecond * time.Duration(math.Pow(2, 9))
 	assert.Equal(t, expected, delay10)
 }
+
+func TestJitter_DelayIsRandom(t *testing.T) {
+	// Given a jitter backoff strategy with 1000ms base delay
+	jitter := NewJitter(1000*time.Millisecond, 2.0, 0)
+
+	// When Delay() is called multiple times for the same attempt
+	delays := make([]time.Duration, 10)
+	for i := 0; i < 10; i++ {
+		delays[i] = jitter.Delay(1)
+	}
+
+	// Then delays should vary (at least some should be different)
+	allSame := true
+	for i := 1; i < len(delays); i++ {
+		if delays[i] != delays[0] {
+			allSame = false
+			break
+		}
+	}
+	assert.False(t, allSame, "Jitter delays should vary, but all were the same: %v", delays[0])
+}
+
+func TestJitter_DelayWithinBounds(t *testing.T) {
+	// Given a jitter backoff strategy with 1000ms base delay
+	jitter := NewJitter(1000*time.Millisecond, 2.0, 0)
+
+	// When Delay() is called for different attempts
+	for attempt := 1; attempt <= 5; attempt++ {
+		delay := jitter.Delay(attempt)
+
+		// Calculate expected exponential delay without jitter
+		expectedBase := float64(1000*time.Millisecond) * math.Pow(2.0, float64(attempt-1))
+		maxDelay := time.Duration(expectedBase)
+
+		// Then delay should be between 0 and the exponential base delay
+		assert.GreaterOrEqual(t, delay, time.Duration(0), "Delay should be >= 0 for attempt %d", attempt)
+		assert.LessOrEqual(t, delay, maxDelay, "Delay should be <= %v for attempt %d", maxDelay, attempt)
+	}
+}
+
+func TestJitter_WithMaxDelay(t *testing.T) {
+	// Given a jitter backoff with max delay cap
+	jitter := NewJitter(100*time.Millisecond, 2.0, 300*time.Millisecond)
+
+	// When Delay() is called for attempts that would exceed max
+	for i := 0; i < 20; i++ {
+		delay := jitter.Delay(10) // High attempt number
+
+		// Then delay should never exceed max delay
+		assert.LessOrEqual(t, delay, 300*time.Millisecond, "Delay should be capped at max delay")
+		assert.GreaterOrEqual(t, delay, time.Duration(0), "Delay should be >= 0")
+	}
+}
+
+func TestJitter_EdgeCases(t *testing.T) {
+	jitter := NewJitter(100*time.Millisecond, 2.0, 0)
+
+	// Test attempt 0 and negative attempts
+	delay0 := jitter.Delay(0)
+	delayNeg := jitter.Delay(-1)
+
+	// Should return random delay between 0 and base delay for invalid attempts
+	assert.GreaterOrEqual(t, delay0, time.Duration(0))
+	assert.LessOrEqual(t, delay0, 100*time.Millisecond)
+	assert.GreaterOrEqual(t, delayNeg, time.Duration(0))
+	assert.LessOrEqual(t, delayNeg, 100*time.Millisecond)
+}

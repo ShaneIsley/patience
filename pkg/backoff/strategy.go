@@ -2,6 +2,7 @@ package backoff
 
 import (
 	"math"
+	"math/rand"
 	"time"
 )
 
@@ -65,4 +66,41 @@ func (e *Exponential) Delay(attempt int) time.Duration {
 	}
 
 	return result
+}
+
+// Jitter implements a jitter backoff strategy that adds randomness to exponential backoff
+type Jitter struct {
+	BaseDelay  time.Duration
+	Multiplier float64
+	MaxDelay   time.Duration
+}
+
+// NewJitter creates a new Jitter backoff strategy
+// baseDelay is the initial delay, multiplier is the factor to increase by each attempt
+// maxDelay is the maximum delay (0 means no limit)
+func NewJitter(baseDelay time.Duration, multiplier float64, maxDelay time.Duration) *Jitter {
+	return &Jitter{
+		BaseDelay:  baseDelay,
+		Multiplier: multiplier,
+		MaxDelay:   maxDelay,
+	}
+}
+
+// Delay returns a random delay between 0 and the exponential delay for the given attempt
+func (j *Jitter) Delay(attempt int) time.Duration {
+	if attempt <= 0 {
+		// For invalid attempts, return random delay between 0 and base delay
+		return time.Duration(rand.Float64() * float64(j.BaseDelay))
+	}
+
+	// Calculate exponential delay: baseDelay * multiplier^(attempt-1)
+	exponentialDelay := float64(j.BaseDelay) * math.Pow(j.Multiplier, float64(attempt-1))
+
+	// Apply max delay cap if set
+	if j.MaxDelay > 0 && time.Duration(exponentialDelay) > j.MaxDelay {
+		exponentialDelay = float64(j.MaxDelay)
+	}
+
+	// Return random delay between 0 and exponential delay (full jitter)
+	return time.Duration(rand.Float64() * exponentialDelay)
 }
