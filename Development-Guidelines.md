@@ -1,6 +1,6 @@
 # **Go Development & TDD Guidelines**
 
-This document outlines the Test-Driven Development (TDD) philosophy and the general Go development best practices for the retry CLI project. Adhering to these guidelines is mandatory to ensure a high-quality, maintainable, and robust codebase.
+This document outlines the Test-Driven Development (TDD) philosophy and the general Go development best practices for the patience CLI project. Adhering to these guidelines is mandatory to ensure a high-quality, maintainable, and robust codebase.
 
 ## **Part 1: Test-Driven Development (TDD)**
 

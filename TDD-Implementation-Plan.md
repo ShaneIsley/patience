@@ -125,16 +125,16 @@ Refactor: N/A.
 
 * This will be more of an integration test.  
 * TestCLI\_RunSimpleSuccessCommand:  
-  * Execute the compiled retry binary as a subprocess (go build first).  
-  * retry \-- /bin/true  
+  * Execute the compiled patience binary as a subprocess (go build first).  
+  * patience -- /bin/true  
   * Assert that the CLI exits with code 0\.  
 * TestCLI\_RunSimpleFailCommand:  
-  * retry \--attempts 2 \-- /bin/false  
+  * patience --attempts 2 \-- /bin/false  
   * Assert that the CLI exits with a non-zero code.
 
 **Code (Green):**
 
-* Create the cmd/retry package.  
+* Create the cmd/patience package.  
 * Use cobra to set up the root command.  
 * Add flags for \--attempts and \--delay.  
 * Parse the command to be executed.  
@@ -166,15 +166,15 @@ Refactor: N/A.
 * TestProjectMetadata_GoModuleCorrect:
   * Given the go.mod file.
   * When parsing the module path.
-  * Then it should reference github.com/shaneisley/retry.
+  * Then it should reference github.com/shaneisley/patience.
 * TestProjectMetadata_ReadmeHasCorrectLinks:
   * Given the README.md file.
   * When parsing markdown links.
-  * Then GitHub repository links should point to github.com/shaneisley/retry.
+  * Then GitHub repository links should point to github.com/shaneisley/patience.
 
 **Code (Green):**
 
-* Update go.mod module path to github.com/shaneisley/retry.
+* Update go.mod module path to github.com/shaneisley/patience.
 * Create LICENSE file with MIT license and Shane Isley copyright.
 * Update README.md with correct GitHub URLs and project ownership.
 * Update all import paths in code to use new module path.
@@ -194,7 +194,7 @@ Refactor: N/A.
 * TestGitRepository_RemoteConfigured:
   * Given a local git repository.
   * When checking remote configuration.
-  * Then origin should point to github.com/shaneisley/retry.
+  * Then origin should point to github.com/shaneisley/patience.
 * TestGitRepository_InitialCommitExists:
   * Given the GitHub repository.
   * When checking commit history.
@@ -206,7 +206,7 @@ Refactor: N/A.
 
 **Code (Green):**
 
-* Create GitHub repository at github.com/shaneisley/retry.
+* Create GitHub repository at github.com/shaneisley/patience.
 * Configure git remote origin to point to GitHub repository.
 * Create comprehensive .gitignore for Go projects.
 * Push initial codebase with proper commit message.
@@ -221,7 +221,7 @@ Refactor: N/A.
 
 ## **Cycle 15: Distribution and Release Strategy**
 
-**Goal:** Implement modern distribution strategies for the retry project.  
+**Goal:** Implement modern distribution strategies for the patience project.  
 **Test (Red):**
 
 * TestDistribution_GoReleaserConfig:

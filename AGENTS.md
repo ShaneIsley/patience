@@ -1,4 +1,4 @@
-# AGENTS.md - Development Guide for retry CLI
+# AGENTS.md - Development Guide for patience CLI
 
 ## Build/Test Commands
 - `go build ./...` - Build all packages
@@ -20,7 +20,7 @@
 - **Packages**: Single purpose packages. Avoid generic utils packages
 
 ## Project Structure
-- `/cmd/retry` - Main CLI package using Cobra
+- `/cmd/patience` - Main CLI package using Cobra
 - `/pkg/executor` - Core retry logic and command execution
 - `/pkg/config` - Configuration loading and validation
 - `/pkg/backoff` - Backoff strategies (exponential, fixed, jitter)

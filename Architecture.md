@@ -1,10 +1,10 @@
-# **Architecture: retry CLI**
+# **Architecture: patience CLI**
 
-This document outlines the architecture for a modern, robust retry command-line utility, written in Go.
+This document outlines the architecture for a modern, robust patience command-line utility, written in Go.
 
 ## **1\. Core Philosophy**
 
-The retry CLI is designed to be:
+The patience CLI is designed to be:
 
 * **Reliable:** It should be a trustworthy tool for wrapping and retrying critical commands.  
 * **Observant:** It must provide clear, actionable feedback and metrics.  
@@ -16,10 +16,10 @@ The retry CLI is designed to be:
 
 The system consists of two main components:
 
-1. **retry CLI:** The primary executable that users interact with. It wraps a given command and implements the retry logic.  
-2. **retryd Daemon (Optional):** A background process that collects, aggregates, and exposes long-term metrics. It is not required for the retry command to function.
+1. **patience CLI:** The primary executable that users interact with. It wraps a given command and implements the retry logic.  
+2. **patienced Daemon (Optional):** A background process that collects, aggregates, and exposes long-term metrics. It is not required for the patience command to function.
 
-## **3\. retry CLI \- Detailed Architecture**
+## **3\. patience CLI \- Detailed Architecture**
 
 The CLI is the core of the project and is responsible for all command execution and retry logic.
 
@@ -37,11 +37,11 @@ The CLI is the core of the project and is responsible for all command execution 
 5. **Delay Strategy:** If a retry is needed, the executor uses the configured backoff strategy (e.g., exponential, fixed, jitter) to calculate and wait for the appropriate delay.  
 6. **Termination:** The loop terminates when a success condition is met or the maximum number of attempts is reached.  
 7. **Status Reporting:** A final summary of the execution is printed to the console.  
-8. **Metrics Dispatch (Async):** If the retryd daemon is active and configured, the CLI asynchronously sends the final run metrics to the daemon via a Unix socket. This is a non-blocking, "fire-and-forget" operation to ensure the CLI's exit is not delayed.
+8. **Metrics Dispatch (Async):** If the patienced daemon is active and configured, the CLI asynchronously sends the final run metrics to the daemon via a Unix socket. This is a non-blocking, "fire-and-forget" operation to ensure the CLI's exit is not delayed.
 
 ### **3.2. Status and Output (Daemon Inactive)**
 
-When retryd is not running, the CLI is the sole source of information. It provides detailed real-time and summary output directly to the terminal.
+When patienced is not running, the CLI is the sole source of information. It provides detailed real-time and summary output directly to the terminal.
 
 #### **Real-time (Per-Attempt) Output:**
 
@@ -74,18 +74,18 @@ When retryd is not running, the CLI is the sole source of information. It provid
 │   ├── /config     \# Configuration loading and validation  
 │   ├── /backoff    \# Backoff strategies (exponential, fixed, etc.)  
 │   ├── /conditions \# Logic for checking success/failure conditions  
-│   ├── /metrics    \# Structs and client for sending data to retryd  
+│   ├── /metrics    \# Structs and client for sending data to patienced  
 │   └── /ui         \# Handles terminal output and status reporting  
 └── /internal  
-    └── /daemon     \# (If retryd is in the same repo) Daemon-specific logic
+    └── /daemon     \# (If patienced is in the same repo) Daemon-specific logic
 
-## **4\. retryd Daemon \- Detailed Architecture**
+## **4\. patienced Daemon \- Detailed Architecture**
 
 The daemon is a long-running, optional background service for metrics aggregation.
 
 ### **4.1. Core Responsibilities**
 
-* **Listen for Metrics:** Listens on a Unix socket (/tmp/retryd.sock or similar) for incoming metrics payloads from retry CLI instances.  
+* **Listen for Metrics:** Listens on a Unix socket (/tmp/patienced.sock or similar) for incoming metrics payloads from patience CLI instances.  
 * **In-Memory Aggregation:** Stores and aggregates metrics in memory. This includes counters for successes/failures per command, histograms for durations, etc.  
 * **Expose Metrics:** Exposes the aggregated metrics via an HTTP endpoint in a standard format (e.g., Prometheus).  
 * **Persistence (Future):** May periodically flush metrics to disk to survive restarts.
@@ -101,12 +101,12 @@ When the daemon is active, the following metrics are collected and aggregated:
   * retry\_run\_duration\_seconds{command}: Histogram of total execution time for a retry run (including delays).  
   * retry\_attempt\_duration\_seconds{command}: Histogram of execution time for individual command attempts.  
 * **Gauges:**  
-  * retryd\_active: A gauge set to 1 indicating the daemon is running.
+  * patienced\_active: A gauge set to 1 indicating the daemon is running.
 
 ### **4.3. Communication**
 
-* **CLI \-\> Daemon:** The retry CLI will send a UDP packet or a quick stream message containing a JSON or Protobuf payload to the Unix socket. This is connectionless and non-blocking to prevent slowing down the CLI.  
-* **Scraper \-\> Daemon:** A monitoring system (like Prometheus) scrapes the /metrics HTTP endpoint exposed by retryd.
+* **CLI \-\> Daemon:** The patience CLI will send a UDP packet or a quick stream message containing a JSON or Protobuf payload to the Unix socket. This is connectionless and non-blocking to prevent slowing down the CLI.  
+* **Scraper \-\> Daemon:** A monitoring system (like Prometheus) scrapes the /metrics HTTP endpoint exposed by patienced.
 
 ## **5\. Technology Choices**
 

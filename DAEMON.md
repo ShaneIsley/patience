@@ -1,6 +1,6 @@
 # Patience Daemon (patienced)
 
-The patience daemon (`patienced`) is a background service that collects and aggregates metrics from patience CLI instances, providing a centralized monitoring solution for retry operations across your infrastructure.
+The patience daemon (`patienced`) is a background service that collects and aggregates metrics from patience CLI instances, providing a centralized monitoring solution for patience operations across your infrastructure.
 
 **Author:** Shane Isley  
 **Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)
@@ -10,7 +10,7 @@ The patience daemon (`patienced`) is a background service that collects and aggr
 - **Metrics Collection**: Receives metrics from patience CLI instances via Unix domain socket
 - **Data Aggregation**: Aggregates metrics with configurable retention policies
 - **HTTP API**: RESTful API for accessing metrics and statistics
-- **Web Dashboard**: Built-in web interface for monitoring retry operations
+- **Web Dashboard**: Built-in web interface for monitoring patience operations
 - **Performance Monitoring**: Runtime performance metrics and profiling endpoints
 - **System Integration**: Service files for systemd and launchd
 - **Graceful Shutdown**: Proper cleanup and signal handling
@@ -23,7 +23,7 @@ Use the provided installation script:
 
 ```bash
 # Build binaries first
-go build ./cmd/retry
+go build ./cmd/patience
 go build ./cmd/patienced
 
 # Run installation script (requires root)
@@ -45,19 +45,19 @@ sudo ./scripts/install.sh
 
 3. **Create configuration directory**:
    ```bash
-   sudo mkdir -p /usr/local/etc/retry
+   sudo mkdir -p /usr/local/etc/patience
    ```
 
 4. **Create data and log directories**:
    ```bash
-   sudo mkdir -p /usr/local/var/lib/retry
-   sudo mkdir -p /usr/local/var/log/retry
+   sudo mkdir -p /usr/local/var/lib/patience
+   sudo mkdir -p /usr/local/var/log/patience
    ```
 
 5. **Create user and group**:
    ```bash
    # Linux
-   sudo useradd --system --home-dir /usr/local/var/lib/retry retry
+   sudo useradd --system --home-dir /usr/local/var/lib/patience retry
    
    # macOS
    sudo dscl . -create /Users/_retry
@@ -68,16 +68,16 @@ sudo ./scripts/install.sh
 
 ### Configuration File
 
-Create a configuration file at `/usr/local/etc/retry/daemon.json`:
+Create a configuration file at `/usr/local/etc/patience/daemon.json`:
 
 ```json
 {
-  "socket_path": "/tmp/retry-daemon.sock",
+  "socket_path": "/tmp/patience-daemon.sock",
   "http_port": 8080,
   "max_metrics": 10000,
   "metrics_max_age": "24h",
   "log_level": "info",
-  "pid_file": "/var/run/retry-daemon.pid",
+  "pid_file": "/var/run/patience-daemon.pid",
   "enable_http": true,
   "enable_profiling": false
 }
@@ -87,12 +87,12 @@ Create a configuration file at `/usr/local/etc/retry/daemon.json`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `socket_path` | string | `/tmp/retry-daemon.sock` | Unix socket path for metrics collection |
+| `socket_path` | string | `/tmp/patience-daemon.sock` | Unix socket path for metrics collection |
 | `http_port` | int | `8080` | HTTP server port |
 | `max_metrics` | int | `10000` | Maximum number of metrics to store |
 | `metrics_max_age` | duration | `24h` | Maximum age of stored metrics |
 | `log_level` | string | `info` | Log level (debug, info, warn, error) |
-| `pid_file` | string | `/tmp/retry-daemon.pid` | PID file location |
+| `pid_file` | string | `/tmp/patience-daemon.pid` | PID file location |
 | `enable_http` | bool | `true` | Enable HTTP API server |
 | `enable_profiling` | bool | `false` | Enable profiling endpoints |
 
@@ -130,27 +130,27 @@ patienced -daemon
 **systemd (Linux)**:
 ```bash
 # Enable and start
-sudo systemctl enable retry-daemon
-sudo systemctl start retry-daemon
+sudo systemctl enable patience-daemon
+sudo systemctl start patience-daemon
 
 # Check status
-sudo systemctl status retry-daemon
+sudo systemctl status patience-daemon
 
 # View logs
-sudo journalctl -u retry-daemon -f
+sudo journalctl -u patience-daemon -f
 ```
 
 **launchd (macOS)**:
 ```bash
 # Load and start
-sudo launchctl load /Library/LaunchDaemons/com.retry.daemon.plist
-sudo launchctl start com.retry.daemon
+sudo launchctl load /Library/LaunchDaemons/com.patience.daemon.plist
+sudo launchctl start com.patience.daemon
 
 # Check status
 sudo launchctl list | grep retry
 
 # View logs
-tail -f /usr/local/var/log/retry/daemon.log
+tail -f /usr/local/var/log/patience/daemon.log
 ```
 
 ### Managing the Daemon
@@ -187,11 +187,11 @@ Options:
   -max-metrics int
         Maximum number of metrics to store (default 10000)
   -pid-file string
-        PID file path (default "/tmp/retry-daemon.pid")
+        PID file path (default "/tmp/patience-daemon.pid")
   -port int
         HTTP server port (default 8080)
   -socket string
-        Unix socket path (default "/tmp/retry-daemon.sock")
+        Unix socket path (default "/tmp/patience-daemon.sock")
   -status
         Show daemon status
   -stop
@@ -258,7 +258,7 @@ The dashboard provides:
 
 - **System Statistics**: Daemon configuration and storage info
 - **Metrics Overview**: Success rates, attempt counts, duration statistics
-- **Recent Operations**: Latest retry operations with status
+- **Recent Operations**: Latest patience operations with status
 - **Real-time Updates**: Auto-refresh every 30 seconds
 
 ## Integration with Retry CLI
@@ -307,10 +307,10 @@ Monitor daemon performance via:
 1. **Permission denied on socket**:
    ```bash
    # Check socket permissions
-   ls -la /tmp/retry-daemon.sock
+   ls -la /tmp/patience-daemon.sock
    
    # Fix permissions if needed
-   sudo chmod 666 /tmp/retry-daemon.sock
+   sudo chmod 666 /tmp/patience-daemon.sock
    ```
 
 2. **Port already in use**:
@@ -328,7 +328,7 @@ Monitor daemon performance via:
    patienced -status
    
    # Check logs
-   journalctl -u retry-daemon -n 50
+   journalctl -u patience-daemon -n 50
    ```
 
 4. **High memory usage**:
@@ -395,7 +395,7 @@ patienced -enable-profiling
 ```bash
 # Clone repository
 git clone <repository-url>
-cd retry
+cd patience
 
 # Build daemon
 go build -o patienced ./cmd/patienced
