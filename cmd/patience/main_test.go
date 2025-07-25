@@ -267,7 +267,7 @@ attempts = 1
 success_pattern = "success"
 `
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, ".retry.toml")
+	configFile := filepath.Join(tmpDir, ".patience.toml")
 	err := os.WriteFile(configFile, []byte(configContent), 0644)
 	require.NoError(t, err)
 
@@ -460,7 +460,7 @@ func TestCLI_EnvironmentVariables(t *testing.T) {
 	// Save original environment
 	originalEnv := make(map[string]string)
 	envVars := []string{
-		"RETRY_ATTEMPTS", "RETRY_DELAY", "RETRY_TIMEOUT", "RETRY_BACKOFF",
+		"PATIENCE_ATTEMPTS", "PATIENCE_DELAY", "PATIENCE_TIMEOUT", "PATIENCE_BACKOFF",
 	}
 
 	for _, envVar := range envVars {
@@ -480,8 +480,8 @@ func TestCLI_EnvironmentVariables(t *testing.T) {
 	}()
 
 	// Given environment variables are set
-	os.Setenv("RETRY_ATTEMPTS", "2")
-	os.Setenv("RETRY_DELAY", "0.1s")
+	os.Setenv("PATIENCE_ATTEMPTS", "2")
+	os.Setenv("PATIENCE_DELAY", "0.1s")
 
 	// And a compiled retry binary
 	binary := buildBinary(t)
@@ -509,15 +509,15 @@ delay = "2s"
 	require.NoError(t, err)
 
 	// Save and set environment variable
-	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
 		} else {
-			os.Unsetenv("RETRY_ATTEMPTS")
+			os.Unsetenv("PATIENCE_ATTEMPTS")
 		}
 	}()
-	os.Setenv("RETRY_ATTEMPTS", "3") // Should override config file
+	os.Setenv("PATIENCE_ATTEMPTS", "3") // Should override config file
 
 	// Given a compiled retry binary
 	binary := buildBinary(t)
@@ -576,17 +576,17 @@ delay = "1s"
 
 func TestCLI_EnvironmentVariableValidation(t *testing.T) {
 	// Save original environment
-	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
 		} else {
-			os.Unsetenv("RETRY_ATTEMPTS")
+			os.Unsetenv("PATIENCE_ATTEMPTS")
 		}
 	}()
 
 	// Given invalid environment variable
-	os.Setenv("RETRY_ATTEMPTS", "invalid")
+	os.Setenv("PATIENCE_ATTEMPTS", "invalid")
 
 	// And a compiled retry binary
 	binary := buildBinary(t)
@@ -605,7 +605,7 @@ func TestCLI_ComplexEnvironmentConfiguration(t *testing.T) {
 	// Save original environment
 	originalEnv := make(map[string]string)
 	envVars := []string{
-		"RETRY_ATTEMPTS", "RETRY_DELAY", "RETRY_BACKOFF", "RETRY_MULTIPLIER", "RETRY_MAX_DELAY",
+		"PATIENCE_ATTEMPTS", "PATIENCE_DELAY", "PATIENCE_BACKOFF", "PATIENCE_MULTIPLIER", "PATIENCE_MAX_DELAY",
 	}
 
 	for _, envVar := range envVars {
@@ -625,11 +625,11 @@ func TestCLI_ComplexEnvironmentConfiguration(t *testing.T) {
 	}()
 
 	// Given complex environment configuration
-	os.Setenv("RETRY_ATTEMPTS", "3")
-	os.Setenv("RETRY_DELAY", "0.1s")
-	os.Setenv("RETRY_BACKOFF", "exponential")
-	os.Setenv("RETRY_MULTIPLIER", "2.0")
-	os.Setenv("RETRY_MAX_DELAY", "1s")
+	os.Setenv("PATIENCE_ATTEMPTS", "3")
+	os.Setenv("PATIENCE_DELAY", "0.1s")
+	os.Setenv("PATIENCE_BACKOFF", "exponential")
+	os.Setenv("PATIENCE_MULTIPLIER", "2.0")
+	os.Setenv("PATIENCE_MAX_DELAY", "1s")
 
 	// And a compiled retry binary
 	binary := buildBinary(t)

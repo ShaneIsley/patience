@@ -103,20 +103,20 @@ func LoadWithEnvironment() (*Config, error) {
 	setDefaults(v)
 
 	// Configure environment variable support
-	v.SetEnvPrefix("RETRY")
+	v.SetEnvPrefix("PATIENCE")
 	v.AutomaticEnv()
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"RETRY_ATTEMPTS":         "attempts",
-		"RETRY_DELAY":            "delay",
-		"RETRY_TIMEOUT":          "timeout",
-		"RETRY_BACKOFF":          "backoff",
-		"RETRY_MAX_DELAY":        "max_delay",
-		"RETRY_MULTIPLIER":       "multiplier",
-		"RETRY_SUCCESS_PATTERN":  "success_pattern",
-		"RETRY_FAILURE_PATTERN":  "failure_pattern",
-		"RETRY_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":         "attempts",
+		"PATIENCE_DELAY":            "delay",
+		"PATIENCE_TIMEOUT":          "timeout",
+		"PATIENCE_BACKOFF":          "backoff",
+		"PATIENCE_MAX_DELAY":        "max_delay",
+		"PATIENCE_MULTIPLIER":       "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -168,20 +168,20 @@ func LoadWithPrecedence(configFile string, flagConfig *Config, debug bool) (*Con
 	}
 
 	// Configure environment variable support
-	v.SetEnvPrefix("RETRY")
+	v.SetEnvPrefix("PATIENCE")
 	v.AutomaticEnv()
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"RETRY_ATTEMPTS":         "attempts",
-		"RETRY_DELAY":            "delay",
-		"RETRY_TIMEOUT":          "timeout",
-		"RETRY_BACKOFF":          "backoff",
-		"RETRY_MAX_DELAY":        "max_delay",
-		"RETRY_MULTIPLIER":       "multiplier",
-		"RETRY_SUCCESS_PATTERN":  "success_pattern",
-		"RETRY_FAILURE_PATTERN":  "failure_pattern",
-		"RETRY_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":         "attempts",
+		"PATIENCE_DELAY":            "delay",
+		"PATIENCE_TIMEOUT":          "timeout",
+		"PATIENCE_BACKOFF":          "backoff",
+		"PATIENCE_MAX_DELAY":        "max_delay",
+		"PATIENCE_MULTIPLIER":       "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -245,20 +245,20 @@ func LoadWithPrecedenceAndExplicitFlags(configFile string, flagConfig *Config, e
 	}
 
 	// Configure environment variable support
-	v.SetEnvPrefix("RETRY")
+	v.SetEnvPrefix("PATIENCE")
 	v.AutomaticEnv()
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"RETRY_ATTEMPTS":         "attempts",
-		"RETRY_DELAY":            "delay",
-		"RETRY_TIMEOUT":          "timeout",
-		"RETRY_BACKOFF":          "backoff",
-		"RETRY_MAX_DELAY":        "max_delay",
-		"RETRY_MULTIPLIER":       "multiplier",
-		"RETRY_SUCCESS_PATTERN":  "success_pattern",
-		"RETRY_FAILURE_PATTERN":  "failure_pattern",
-		"RETRY_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":         "attempts",
+		"PATIENCE_DELAY":            "delay",
+		"PATIENCE_TIMEOUT":          "timeout",
+		"PATIENCE_BACKOFF":          "backoff",
+		"PATIENCE_MAX_DELAY":        "max_delay",
+		"PATIENCE_MULTIPLIER":       "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -388,9 +388,9 @@ func (c *Config) MergeWithExplicitFlags(flags *Config, explicitFields map[string
 }
 
 // FindConfigFile searches for a configuration file in the given directory
-// It looks for .retry.toml, retry.toml, .retry.yaml, retry.yaml files
+// It looks for .patience.toml, patience.toml, .patience.yaml, patience.yaml files
 func FindConfigFile(dir string) string {
-	configNames := []string{".retry.toml", "retry.toml", ".retry.yaml", "retry.yaml"}
+	configNames := []string{".patience.toml", "patience.toml", ".patience.yaml", "patience.yaml"}
 
 	for _, name := range configNames {
 		configPath := filepath.Join(dir, name)
@@ -400,6 +400,64 @@ func FindConfigFile(dir string) string {
 	}
 
 	return ""
+}
+
+// validateCombinations validates flag combinations and returns validation errors
+func (c *Config) validateCombinations() []ValidationError {
+	var errors []ValidationError
+
+	// Exponential/Jitter/DecorrelatedJitter backoff requires base delay > 0
+	exponentialStrategies := []string{"exponential", "jitter", "decorrelated-jitter"}
+	for _, strategy := range exponentialStrategies {
+		if c.BackoffType == strategy && c.Delay == 0 {
+			errors = append(errors, ValidationError{
+				Field:   "delay",
+				Value:   c.Delay,
+				Message: fmt.Sprintf("%s backoff requires --delay > 0", strategy),
+			})
+			break
+		}
+	}
+
+	// Multiplier only valid for certain strategies
+	if c.Multiplier != 2.0 { // Non-default multiplier
+		validMultiplierStrategies := []string{"exponential", "jitter", "decorrelated-jitter"}
+		isValidForMultiplier := false
+		for _, strategy := range validMultiplierStrategies {
+			if c.BackoffType == strategy {
+				isValidForMultiplier = true
+				break
+			}
+		}
+		if !isValidForMultiplier {
+			errors = append(errors, ValidationError{
+				Field:   "multiplier",
+				Value:   c.Multiplier,
+				Message: fmt.Sprintf("--multiplier only valid with: %s", strings.Join(validMultiplierStrategies, ", ")),
+			})
+		}
+	}
+
+	// Max delay only valid for certain strategies
+	if c.MaxDelay > 0 {
+		validMaxDelayStrategies := []string{"exponential", "jitter", "linear", "decorrelated-jitter", "fibonacci"}
+		isValidForMaxDelay := false
+		for _, strategy := range validMaxDelayStrategies {
+			if c.BackoffType == strategy {
+				isValidForMaxDelay = true
+				break
+			}
+		}
+		if !isValidForMaxDelay {
+			errors = append(errors, ValidationError{
+				Field:   "max_delay",
+				Value:   c.MaxDelay,
+				Message: fmt.Sprintf("--max-delay only valid with: %s", strings.Join(validMaxDelayStrategies, ", ")),
+			})
+		}
+	}
+
+	return errors
 }
 
 // Validate validates the configuration and returns detailed error messages
@@ -455,12 +513,22 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate backoff type
-	if c.BackoffType != "" && c.BackoffType != "fixed" && c.BackoffType != "exponential" {
-		errors = append(errors, ValidationError{
-			Field:   "backoff",
-			Value:   c.BackoffType,
-			Message: "must be 'fixed' or 'exponential'",
-		})
+	validBackoffTypes := []string{"fixed", "exponential", "jitter", "linear", "decorrelated-jitter", "fibonacci"}
+	if c.BackoffType != "" {
+		isValid := false
+		for _, validType := range validBackoffTypes {
+			if c.BackoffType == validType {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			errors = append(errors, ValidationError{
+				Field:   "backoff",
+				Value:   c.BackoffType,
+				Message: "must be one of: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci",
+			})
+		}
 	}
 
 	// Validate max delay
@@ -501,6 +569,10 @@ func (c *Config) Validate() error {
 			Message: "must be 10.0 or less to prevent excessive delays",
 		})
 	}
+
+	// Validate flag combinations
+	combinationErrors := c.validateCombinations()
+	errors = append(errors, combinationErrors...)
 
 	// Return combined error if any validation failed
 	if len(errors) > 0 {

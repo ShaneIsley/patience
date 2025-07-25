@@ -23,6 +23,14 @@ func createExecutor(cfg *config.Config) (*executor.Executor, error) {
 		switch cfg.BackoffType {
 		case "exponential":
 			strategy = backoff.NewExponential(cfg.Delay, cfg.Multiplier, cfg.MaxDelay)
+		case "jitter":
+			strategy = backoff.NewJitter(cfg.Delay, cfg.Multiplier, cfg.MaxDelay)
+		case "linear":
+			strategy = backoff.NewLinear(cfg.Delay, cfg.MaxDelay)
+		case "decorrelated-jitter":
+			strategy = backoff.NewDecorrelatedJitter(cfg.Delay, cfg.Multiplier, cfg.MaxDelay)
+		case "fibonacci":
+			strategy = backoff.NewFibonacci(cfg.Delay, cfg.MaxDelay)
 		default: // "fixed" or empty
 			strategy = backoff.NewFixed(cfg.Delay)
 		}
@@ -122,12 +130,28 @@ Environment variables:
 - PATIENCE_ATTEMPTS: Maximum number of attempts
 - PATIENCE_DELAY: Base delay between attempts (e.g., "1s", "500ms")
 - PATIENCE_TIMEOUT: Timeout per attempt (e.g., "30s", "1m")
-- PATIENCE_BACKOFF: Backoff strategy ("fixed" or "exponential")
+- PATIENCE_BACKOFF: Backoff strategy ("fixed", "exponential", "jitter", "linear", "decorrelated-jitter", or "fibonacci")
 - PATIENCE_MAX_DELAY: Maximum delay for exponential backoff
 - PATIENCE_MULTIPLIER: Multiplier for exponential backoff
 - PATIENCE_SUCCESS_PATTERN: Regex pattern for success detection
 - PATIENCE_FAILURE_PATTERN: Regex pattern for failure detection
-- PATIENCE_CASE_INSENSITIVE: Case-insensitive pattern matching ("true" or "false")`,
+- PATIENCE_CASE_INSENSITIVE: Case-insensitive pattern matching ("true" or "false")
+
+EXAMPLES:
+  # Basic retry with exponential backoff
+  patience --attempts 5 --delay 1s --backoff exponential -- curl -f https://api.example.com
+
+  # Pattern-based success detection
+  patience --success-pattern "deployment successful" -- ./deploy.sh
+
+  # Distributed system with jitter to prevent thundering herd
+  patience --backoff jitter --delay 1s --max-delay 10s -- api-call
+
+  # Environment variable usage
+  PATIENCE_ATTEMPTS=5 PATIENCE_BACKOFF=fibonacci patience -- flaky-command
+
+  # Configuration file with flag override
+  patience --config myproject.toml --attempts 10 -- integration-test`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runRetry,
 }
@@ -140,15 +164,15 @@ func init() {
 	rootCmd.Flags().BoolVar(&debugConfig, "debug-config", false, "Show configuration resolution debug information")
 
 	// CLI flags (these will override config file and environment values)
-	rootCmd.Flags().IntVarP(&flagConfig.Attempts, "attempts", "a", 0, "Maximum number of attempts")
-	rootCmd.Flags().DurationVarP(&flagConfig.Delay, "delay", "d", 0, "Base delay between attempts")
-	rootCmd.Flags().DurationVarP(&flagConfig.Timeout, "timeout", "t", 0, "Timeout per attempt")
-	rootCmd.Flags().StringVar(&flagConfig.BackoffType, "backoff", "", "Backoff strategy: fixed or exponential")
-	rootCmd.Flags().DurationVar(&flagConfig.MaxDelay, "max-delay", 0, "Maximum delay for exponential backoff (0 = no limit)")
-	rootCmd.Flags().Float64Var(&flagConfig.Multiplier, "multiplier", 0, "Multiplier for exponential backoff")
-	rootCmd.Flags().StringVar(&flagConfig.SuccessPattern, "success-pattern", "", "Regex pattern that indicates success in stdout/stderr")
-	rootCmd.Flags().StringVar(&flagConfig.FailurePattern, "failure-pattern", "", "Regex pattern that indicates failure in stdout/stderr")
-	rootCmd.Flags().BoolVar(&flagConfig.CaseInsensitive, "case-insensitive", false, "Make pattern matching case-insensitive")
+	rootCmd.Flags().IntVarP(&flagConfig.Attempts, "attempts", "a", 0, "Maximum retry attempts (default: 3, range: 1-1000)")
+	rootCmd.Flags().DurationVarP(&flagConfig.Delay, "delay", "d", 0, "Base delay between attempts (default: 0 = no delay, examples: 1s, 500ms)")
+	rootCmd.Flags().DurationVarP(&flagConfig.Timeout, "timeout", "t", 0, "Timeout per attempt (default: 0 = no timeout, examples: 30s, 1m)")
+	rootCmd.Flags().StringVar(&flagConfig.BackoffType, "backoff", "", "Backoff strategy (default: fixed)\n                                 Options: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci")
+	rootCmd.Flags().DurationVar(&flagConfig.MaxDelay, "max-delay", 0, "Maximum delay cap (default: 0 = no limit, valid with: exponential, jitter, linear, decorrelated-jitter, fibonacci)")
+	rootCmd.Flags().Float64Var(&flagConfig.Multiplier, "multiplier", 0, "Backoff multiplier (default: 2.0, valid with: exponential, jitter, decorrelated-jitter)")
+	rootCmd.Flags().StringVar(&flagConfig.SuccessPattern, "success-pattern", "", "Regex pattern for success detection in command output")
+	rootCmd.Flags().StringVar(&flagConfig.FailurePattern, "failure-pattern", "", "Regex pattern for failure detection in command output")
+	rootCmd.Flags().BoolVar(&flagConfig.CaseInsensitive, "case-insensitive", false, "Case-insensitive pattern matching")
 }
 
 // loadConfiguration loads configuration with full precedence support

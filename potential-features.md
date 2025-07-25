@@ -14,8 +14,7 @@ The following backoff strategies have been fully implemented and tested:
 
 ## High Priority Features
 
-### Additional Backoff Strategies
-- **PLEB (Pessimistic Linear Exponential Backoff):** Add a hybrid strategy that starts with linear progression, transitions to exponential growth, and uses conservative delays for production systems where being cautious about retry timing is critical.
+*No high priority features currently identified.*
 
 ## Medium Priority Features
 
@@ -130,6 +129,7 @@ More sophisticated success/failure logic combinations:
 - Best practices documentation
 
 ### Advanced Retry Logic
+- **PLEB (Pessimistic Linear Exponential Backoff):** Add a hybrid strategy that starts with linear progression, transitions to exponential growth, and uses conservative delays for production systems where being cautious about retry timing is critical.
 - Custom backoff algorithms
 - Conditional retry logic based on attempt number
 - Time-based retry windows

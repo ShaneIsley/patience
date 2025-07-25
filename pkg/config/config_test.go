@@ -170,7 +170,7 @@ func TestConfig_FindConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create config file in temp directory
-	configFile := filepath.Join(tmpDir, ".retry.toml")
+	configFile := filepath.Join(tmpDir, ".patience.toml")
 	err := os.WriteFile(configFile, []byte("attempts = 5"), 0644)
 	require.NoError(t, err)
 
@@ -253,7 +253,7 @@ func TestConfig_Validate(t *testing.T) {
 				BackoffType: "invalid",
 			},
 			expectError: true,
-			errorMsg:    "must be 'fixed' or 'exponential'",
+			errorMsg:    "must be one of: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci",
 		},
 		{
 			name: "invalid max delay - less than delay",
@@ -283,6 +283,78 @@ func TestConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "must be 10.0 or less",
 		},
+		{
+			name: "exponential backoff with zero delay",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "exponential",
+				Delay:       0,
+			},
+			expectError: true,
+			errorMsg:    "exponential backoff requires --delay > 0",
+		},
+		{
+			name: "jitter backoff with zero delay",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "jitter",
+				Delay:       0,
+			},
+			expectError: true,
+			errorMsg:    "jitter backoff requires --delay > 0",
+		},
+		{
+			name: "decorrelated-jitter backoff with zero delay",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "decorrelated-jitter",
+				Delay:       0,
+			},
+			expectError: true,
+			errorMsg:    "decorrelated-jitter backoff requires --delay > 0",
+		},
+		{
+			name: "multiplier with fixed backoff",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "fixed",
+				Multiplier:  3.0,
+			},
+			expectError: true,
+			errorMsg:    "--multiplier only valid with: exponential, jitter, decorrelated-jitter",
+		},
+		{
+			name: "max-delay with fixed backoff",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "fixed",
+				MaxDelay:    5 * time.Second,
+			},
+			expectError: true,
+			errorMsg:    "--max-delay only valid with: exponential, jitter, linear, decorrelated-jitter, fibonacci",
+		},
+		{
+			name: "valid exponential with all options",
+			config: Config{
+				Attempts:    5,
+				BackoffType: "exponential",
+				Delay:       1 * time.Second,
+				Multiplier:  2.5,
+				MaxDelay:    10 * time.Second,
+			},
+			expectError: false,
+		},
+		{
+			name: "valid linear with max-delay",
+			config: Config{
+				Attempts:    3,
+				BackoffType: "linear",
+				Delay:       1 * time.Second,
+				MaxDelay:    5 * time.Second,
+				Multiplier:  2.0, // Default value to avoid validation errors
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -302,9 +374,9 @@ func TestConfig_LoadWithEnvironment(t *testing.T) {
 	// Save original environment
 	originalEnv := make(map[string]string)
 	envVars := []string{
-		"RETRY_ATTEMPTS", "RETRY_DELAY", "RETRY_TIMEOUT", "RETRY_BACKOFF",
-		"RETRY_MAX_DELAY", "RETRY_MULTIPLIER", "RETRY_SUCCESS_PATTERN",
-		"RETRY_FAILURE_PATTERN", "RETRY_CASE_INSENSITIVE",
+		"PATIENCE_ATTEMPTS", "PATIENCE_DELAY", "PATIENCE_TIMEOUT", "PATIENCE_BACKOFF",
+		"PATIENCE_MAX_DELAY", "PATIENCE_MULTIPLIER", "PATIENCE_SUCCESS_PATTERN",
+		"PATIENCE_FAILURE_PATTERN", "PATIENCE_CASE_INSENSITIVE",
 	}
 
 	for _, envVar := range envVars {
@@ -324,15 +396,15 @@ func TestConfig_LoadWithEnvironment(t *testing.T) {
 	}()
 
 	// Set test environment variables
-	os.Setenv("RETRY_ATTEMPTS", "5")
-	os.Setenv("RETRY_DELAY", "2s")
-	os.Setenv("RETRY_TIMEOUT", "30s")
-	os.Setenv("RETRY_BACKOFF", "exponential")
-	os.Setenv("RETRY_MAX_DELAY", "10s")
-	os.Setenv("RETRY_MULTIPLIER", "2.5")
-	os.Setenv("RETRY_SUCCESS_PATTERN", "deployment successful")
-	os.Setenv("RETRY_FAILURE_PATTERN", "(?i)error|failed")
-	os.Setenv("RETRY_CASE_INSENSITIVE", "true")
+	os.Setenv("PATIENCE_ATTEMPTS", "5")
+	os.Setenv("PATIENCE_DELAY", "2s")
+	os.Setenv("PATIENCE_TIMEOUT", "30s")
+	os.Setenv("PATIENCE_BACKOFF", "exponential")
+	os.Setenv("PATIENCE_MAX_DELAY", "10s")
+	os.Setenv("PATIENCE_MULTIPLIER", "2.5")
+	os.Setenv("PATIENCE_SUCCESS_PATTERN", "deployment successful")
+	os.Setenv("PATIENCE_FAILURE_PATTERN", "(?i)error|failed")
+	os.Setenv("PATIENCE_CASE_INSENSITIVE", "true")
 
 	// When loading configuration with environment variables
 	config, err := LoadWithEnvironment()
@@ -353,7 +425,7 @@ func TestConfig_LoadWithEnvironment(t *testing.T) {
 func TestConfig_LoadWithEnvironment_PartialOverride(t *testing.T) {
 	// Save original environment
 	originalEnv := make(map[string]string)
-	envVars := []string{"RETRY_ATTEMPTS", "RETRY_DELAY"}
+	envVars := []string{"PATIENCE_ATTEMPTS", "PATIENCE_DELAY"}
 
 	for _, envVar := range envVars {
 		originalEnv[envVar] = os.Getenv(envVar)
@@ -372,8 +444,8 @@ func TestConfig_LoadWithEnvironment_PartialOverride(t *testing.T) {
 	}()
 
 	// Set only some environment variables
-	os.Setenv("RETRY_ATTEMPTS", "10")
-	os.Setenv("RETRY_DELAY", "1s")
+	os.Setenv("PATIENCE_ATTEMPTS", "10")
+	os.Setenv("PATIENCE_DELAY", "1s")
 
 	// When loading configuration with partial environment override
 	config, err := LoadWithEnvironment()
@@ -400,15 +472,15 @@ backoff = "exponential"
 	require.NoError(t, err)
 
 	// Save and set environment variables
-	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
 		} else {
-			os.Unsetenv("RETRY_ATTEMPTS")
+			os.Unsetenv("PATIENCE_ATTEMPTS")
 		}
 	}()
-	os.Setenv("RETRY_ATTEMPTS", "7") // Should override config file
+	os.Setenv("PATIENCE_ATTEMPTS", "7") // Should override config file
 
 	// Create flag config (should override both env and config file)
 	flagConfig := &Config{
@@ -454,17 +526,17 @@ func TestConfig_LoadWithPrecedence_ValidationError(t *testing.T) {
 
 func TestConfig_LoadWithEnvironment_InvalidValues(t *testing.T) {
 	// Save original environment
-	originalEnv := os.Getenv("RETRY_ATTEMPTS")
+	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("RETRY_ATTEMPTS", originalEnv)
+			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
 		} else {
-			os.Unsetenv("RETRY_ATTEMPTS")
+			os.Unsetenv("PATIENCE_ATTEMPTS")
 		}
 	}()
 
 	// Set invalid environment variable
-	os.Setenv("RETRY_ATTEMPTS", "invalid")
+	os.Setenv("PATIENCE_ATTEMPTS", "invalid")
 
 	// When loading configuration with invalid environment variable
 	config, err := LoadWithEnvironment()
