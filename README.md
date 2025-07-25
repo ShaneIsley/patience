@@ -154,16 +154,41 @@ patience --success-pattern "(deployed|updated) successfully" -- deploy.sh
 1. **Run your command** – `patience` executes your command exactly as you would
 2. **Check the result** – Determine success using pattern matching (if configured) or exit code
 3. **Pattern precedence** – Failure patterns override success patterns, which override exit codes
-4. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
-5. **Wait patiently** – If it fails, wait for the calculated delay and try again with grace
-6. **Respect limits** – Stop after the maximum number of attempts or max delay reached
-7. **Preserve exit codes** – The final exit code matches your command's result
+4. **Exit on success** – If the command succeeds, `patience` exits immediately (remaining attempts are skipped)
+5. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
+6. **Wait patiently** – If it fails, wait for the calculated delay and try again with grace
+7. **Respect limits** – Stop after the maximum number of attempts or max delay reached
+8. **Preserve exit codes** – The final exit code matches your command's result
 
 ## Exit Codes
 
-- **0** – Command succeeded within the retry limit (by exit code or success pattern)
+- **0** – Command succeeded on any attempt (remaining attempts skipped)
 - **1** – Command failed due to failure pattern match
-- **Non-zero** – Command failed after all retry attempts (matches the command's exit code)
+- **Non-zero** – Command failed after all retry attempts (matches the command's final exit code)
+
+**Note:** `patience` exits with the result of the first successful attempt, not the last attempt.
+
+## Behavior
+
+**Important:** `patience` stops immediately when a command succeeds - it does not execute remaining attempts.
+
+- ✅ **Exits on first success** - If attempt 1 succeeds, attempts 2-N are never executed
+- 🔄 **Only retries on failure** - Success means the job is complete
+- 📊 **Preserves exit codes** - Your command's original behavior is maintained
+- ⏱️ **Efficient execution** - No wasted time on unnecessary attempts
+
+### Examples:
+```bash
+# If API is up on attempt 1, attempts 2-5 are skipped
+patience --attempts 5 -- curl https://api.example.com/health
+
+# Only retries while the service is starting up
+patience --attempts 10 --delay 1s -- nc -z localhost 8080
+
+# This stops immediately if the first curl succeeds
+patience --attempts 5 -- curl https://api.example.com
+# Output: "✅ Command succeeded after 1 attempt" (attempts 2-5 never run)
+```
 
 ## Examples
 
