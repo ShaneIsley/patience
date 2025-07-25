@@ -312,3 +312,68 @@ func TestDecorrelatedJitter_EdgeCases(t *testing.T) {
 	assert.GreaterOrEqual(t, delayNeg, 100*time.Millisecond)
 	assert.LessOrEqual(t, delayNeg, 300*time.Millisecond)
 }
+
+func TestFibonacci_DelayFollowsFibonacciSequence(t *testing.T) {
+	// Given a fibonacci backoff strategy with 100ms base delay
+	fibonacci := NewFibonacci(100*time.Millisecond, 0)
+
+	// When Delay() is called for different attempts
+	delay1 := fibonacci.Delay(1) // First retry: 100ms (1st fibonacci)
+	delay2 := fibonacci.Delay(2) // Second retry: 100ms (2nd fibonacci)
+	delay3 := fibonacci.Delay(3) // Third retry: 200ms (3rd fibonacci)
+	delay4 := fibonacci.Delay(4) // Fourth retry: 300ms (4th fibonacci)
+	delay5 := fibonacci.Delay(5) // Fifth retry: 500ms (5th fibonacci)
+	delay6 := fibonacci.Delay(6) // Sixth retry: 800ms (6th fibonacci)
+
+	// Then delays should follow fibonacci sequence: 1, 1, 2, 3, 5, 8, ...
+	assert.Equal(t, 100*time.Millisecond, delay1) // 1 * 100ms
+	assert.Equal(t, 100*time.Millisecond, delay2) // 1 * 100ms
+	assert.Equal(t, 200*time.Millisecond, delay3) // 2 * 100ms
+	assert.Equal(t, 300*time.Millisecond, delay4) // 3 * 100ms
+	assert.Equal(t, 500*time.Millisecond, delay5) // 5 * 100ms
+	assert.Equal(t, 800*time.Millisecond, delay6) // 8 * 100ms
+}
+
+func TestFibonacci_WithMaxDelay(t *testing.T) {
+	// Given a fibonacci backoff with max delay cap
+	fibonacci := NewFibonacci(100*time.Millisecond, 350*time.Millisecond)
+
+	// When Delay() is called for attempts that would exceed max
+	delay1 := fibonacci.Delay(1) // 100ms
+	delay2 := fibonacci.Delay(2) // 100ms
+	delay3 := fibonacci.Delay(3) // 200ms
+	delay4 := fibonacci.Delay(4) // 300ms
+	delay5 := fibonacci.Delay(5) // Would be 500ms, capped to 350ms
+	delay6 := fibonacci.Delay(6) // Would be 800ms, capped to 350ms
+
+	// Then delays should be capped at max delay
+	assert.Equal(t, 100*time.Millisecond, delay1)
+	assert.Equal(t, 100*time.Millisecond, delay2)
+	assert.Equal(t, 200*time.Millisecond, delay3)
+	assert.Equal(t, 300*time.Millisecond, delay4)
+	assert.Equal(t, 350*time.Millisecond, delay5)
+	assert.Equal(t, 350*time.Millisecond, delay6)
+}
+
+func TestFibonacci_EdgeCases(t *testing.T) {
+	fibonacci := NewFibonacci(100*time.Millisecond, 0)
+
+	// Test attempt 0 and negative attempts
+	delay0 := fibonacci.Delay(0)
+	delayNeg := fibonacci.Delay(-1)
+
+	// Should return base delay for invalid attempts
+	assert.Equal(t, 100*time.Millisecond, delay0)
+	assert.Equal(t, 100*time.Millisecond, delayNeg)
+}
+
+func TestFibonacci_NoMaxDelay(t *testing.T) {
+	// Given fibonacci backoff with no max delay (0)
+	fibonacci := NewFibonacci(50*time.Millisecond, 0)
+
+	// When calculating delay for high attempt numbers
+	delay10 := fibonacci.Delay(10) // 55th fibonacci number * 50ms = 2750ms
+
+	// Then delay should not be capped (55 is the 10th fibonacci number)
+	assert.Equal(t, 2750*time.Millisecond, delay10)
+}

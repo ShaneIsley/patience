@@ -191,3 +191,56 @@ func (d *DecorrelatedJitter) Delay(attempt int) time.Duration {
 
 	return randomDelay
 }
+
+// Fibonacci implements a fibonacci backoff strategy that follows the fibonacci sequence
+// for delay calculation, providing a middle ground between linear and exponential growth
+type Fibonacci struct {
+	BaseDelay time.Duration
+	MaxDelay  time.Duration
+}
+
+// NewFibonacci creates a new Fibonacci backoff strategy
+// baseDelay is the unit delay (multiplied by fibonacci numbers)
+// maxDelay is the maximum delay (0 means no limit)
+func NewFibonacci(baseDelay time.Duration, maxDelay time.Duration) *Fibonacci {
+	return &Fibonacci{
+		BaseDelay: baseDelay,
+		MaxDelay:  maxDelay,
+	}
+}
+
+// Delay returns the fibonacci-based delay for the given attempt
+// Uses fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, ...
+func (f *Fibonacci) Delay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return f.BaseDelay
+	}
+
+	// Calculate fibonacci number for the attempt
+	fibNumber := fibonacci(attempt)
+
+	// Calculate delay: baseDelay * fibonacci(attempt)
+	delay := time.Duration(fibNumber) * f.BaseDelay
+
+	// Apply max delay cap if set
+	if f.MaxDelay > 0 && delay > f.MaxDelay {
+		delay = f.MaxDelay
+	}
+
+	return delay
+}
+
+// fibonacci calculates the nth fibonacci number (1-based)
+// Returns: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, ...
+// Optimized iterative implementation with O(n) time complexity
+func fibonacci(n int) int {
+	if n <= 2 {
+		return 1
+	}
+
+	a, b := 1, 1
+	for i := 3; i <= n; i++ {
+		a, b = b, a+b
+	}
+	return b
+}
