@@ -2,15 +2,19 @@
 
 This document outlines potential enhancements and features that could be added to the patience CLI tool, organized by priority level.
 
+## Completed Features ✅
+
+### Backoff Strategies (Implemented)
+The following backoff strategies have been fully implemented and tested:
+
+- ✅ **Jitter Strategy:** Full jitter backoff implemented to prevent thundering herd issues when multiple instances retry simultaneously.
+- ✅ **Linear Strategy:** Simple, linear backoff option (1s, 2s, 3s, etc.) for predictable, incremental delays.
+- ✅ **Decorrelated Jitter Strategy:** Advanced AWS-recommended jitter strategy that combines exponential backoff with smart randomization for distributed systems.
+- ✅ **Fibonacci Strategy:** Fibonacci sequence-based backoff (1s, 1s, 2s, 3s, 5s, 8s, etc.) as a less aggressive alternative to exponential backoff.
+
 ## High Priority Features
 
 ### Additional Backoff Strategies
-Implement additional backoff strategies to provide more flexible and robust retry mechanisms.
-
-- **Jitter Strategy:** Implement the documented but missing jitter backoff to prevent thundering herd issues when multiple instances retry simultaneously.
-- **Linear Strategy:** Add a simple, linear backoff option (1s, 2s, 3s, etc.) for predictable, incremental delays.
-- **Decorrelated Jitter Strategy:** Add the advanced AWS-recommended jitter strategy that combines exponential backoff with smart randomization for distributed systems.
-- **Fibonacci Strategy:** Add a Fibonacci sequence-based backoff (1s, 1s, 2s, 3s, 5s, 8s, etc.) as a less aggressive alternative to exponential backoff.
 - **PLEB (Pessimistic Linear Exponential Backoff):** Add a hybrid strategy that starts with linear progression, transitions to exponential growth, and uses conservative delays for production systems where being cautious about retry timing is critical.
 
 ## Medium Priority Features

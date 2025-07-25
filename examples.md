@@ -169,6 +169,74 @@ patience --attempts 6 --delay 1s --backoff exponential --max-delay 5s -- api-cal
 - Gives services time to recover
 - Prevents "thundering herd" problems
 
+### Jitter Backoff
+Use to prevent thundering herd problems when multiple instances retry simultaneously:
+
+```bash
+# Random delays between 0 and exponential backoff time
+patience --attempts 5 --delay 1s --backoff jitter -- distributed-api-call
+
+# With max delay cap to prevent excessive waits
+patience --attempts 5 --delay 1s --backoff jitter --max-delay 10s -- high-scale-service
+```
+
+**Why jitter?**
+- Prevents multiple clients from retrying at the same time
+- Essential for distributed systems and microservices
+- Reduces server load spikes during outages
+- AWS and Google Cloud recommend this approach
+
+### Linear Backoff
+Use when you want predictable, incremental delays:
+
+```bash
+# Wait 1s, then 2s, then 3s, then 4s...
+patience --attempts 5 --delay 1s --backoff linear -- gradual-retry
+
+# With max delay cap (1s, 2s, 3s, 5s, 5s...)
+patience --attempts 6 --delay 1s --backoff linear --max-delay 5s -- capped-linear
+```
+
+**Why linear backoff?**
+- Predictable timing for debugging
+- Good for operations that need steady progression
+- Less aggressive than exponential growth
+- Useful for rate-limited APIs
+
+### Decorrelated Jitter
+Use for AWS services and high-scale distributed systems (AWS recommended):
+
+```bash
+# Smart jitter based on previous delay
+patience --attempts 5 --delay 1s --backoff decorrelated-jitter --multiplier 3.0 -- aws-api-call
+
+# With max delay for production systems
+patience --attempts 8 --delay 500ms --backoff decorrelated-jitter --multiplier 3.0 --max-delay 30s -- production-service
+```
+
+**Why decorrelated jitter?**
+- AWS-recommended strategy for their services
+- Better distribution than simple jitter
+- Uses previous delay to calculate next delay
+- Optimal for high-scale distributed systems
+
+### Fibonacci Backoff
+Use when you want moderate growth between linear and exponential:
+
+```bash
+# Wait 1s, 1s, 2s, 3s, 5s, 8s...
+patience --attempts 6 --delay 1s --backoff fibonacci -- moderate-growth
+
+# Good for services that need time to recover
+patience --attempts 8 --delay 500ms --backoff fibonacci --max-delay 15s -- recovery-service
+```
+
+**Why fibonacci backoff?**
+- Moderate growth rate (between linear and exponential)
+- Natural progression that's not too aggressive
+- Good for services that need gradual recovery time
+- Mathematical elegance with practical benefits
+
 ## Quick Reference
 
 ### Most Common Patterns
@@ -195,16 +263,21 @@ patience --attempts 5 --delay 500ms --backoff exponential --max-delay 10s --time
 | Use Case | Attempts | Delay | Backoff | Timeout | Example |
 |----------|----------|-------|---------|---------|---------|
 | API calls | 3-5 | 1s | exponential | 10-30s | `patience -a 5 -d 1s --backoff exponential -t 15s -- curl -f api.com` |
+| Distributed APIs | 3-5 | 1s | jitter | 10-30s | `patience -a 5 -d 1s --backoff jitter -t 15s -- curl -f api.com` |
+| AWS services | 5-8 | 500ms | decorrelated-jitter | 15-30s | `patience -a 8 -d 500ms --backoff decorrelated-jitter -t 20s -- aws s3 ls` |
 | File downloads | 3 | 2s | exponential | 60s+ | `patience -a 3 -d 2s --backoff exponential -t 120s -- wget file.zip` |
-| Service startup | 10-15 | 1s | exponential | 5-10s | `patience -a 15 -d 1s --backoff exponential -t 5s -- curl localhost:8080` |
+| Service startup | 10-15 | 1s | fibonacci | 5-10s | `patience -a 15 -d 1s --backoff fibonacci -t 5s -- curl localhost:8080` |
 | Database connections | 5-8 | 1s | exponential | 5-10s | `patience -a 8 -d 1s --backoff exponential -t 5s -- pg_isready` |
 | SSH connections | 3-5 | 2s | exponential | 10-30s | `patience -a 5 -d 2s --backoff exponential -t 15s -- ssh user@host` |
+| Rate-limited APIs | 5-8 | 1s | linear | 10-20s | `patience -a 8 -d 1s --backoff linear -t 15s -- api-call` |
 | Quick local checks | 5-10 | 500ms | fixed | 5s | `patience -a 10 -d 500ms -- test -f /tmp/ready` |
 
 ## Tips
 
 - **Start simple**: Use `patience -- command` first, then add options as needed
 - **Network calls**: Use exponential backoff (`--backoff exponential`) to be respectful to servers
+- **Distributed systems**: Use jitter (`--backoff jitter`) to prevent thundering herd problems
+- **AWS services**: Use decorrelated jitter (`--backoff decorrelated-jitter`) for optimal performance
 - **Local operations**: Fixed delays or no delays work fine, just `--attempts`
 - **Long-running commands**: Always use `--timeout` to prevent hanging
 - **Production systems**: Exponential backoff with `--max-delay` prevents excessive waits

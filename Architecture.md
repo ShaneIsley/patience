@@ -34,7 +34,7 @@ The CLI is the core of the project and is responsible for all command execution 
 4. **Condition Checking:** After each attempt, the executor checks the result against the success/failure conditions.  
    * **Success Conditions:** (e.g., exit code 0, stdout matches regex). If met, the loop terminates.  
    * **Failure Conditions:** (e.g., non-zero exit code, timeout, stderr matches regex). If met, it calculates the delay for the next attempt.  
-5. **Delay Strategy:** If a retry is needed, the executor uses the configured backoff strategy (e.g., exponential, fixed, jitter) to calculate and wait for the appropriate delay.  
+5. **Delay Strategy:** If a retry is needed, the executor uses the configured backoff strategy (fixed, exponential, jitter, linear, decorrelated-jitter, or fibonacci) to calculate and wait for the appropriate delay.  
 6. **Termination:** The loop terminates when a success condition is met or the maximum number of attempts is reached.  
 7. **Status Reporting:** A final summary of the execution is printed to the console.  
 8. **Metrics Dispatch (Async):** If the patienced daemon is active and configured, the CLI asynchronously sends the final run metrics to the daemon via a Unix socket. This is a non-blocking, "fire-and-forget" operation to ensure the CLI's exit is not delayed.
@@ -72,7 +72,7 @@ When patienced is not running, the CLI is the sole source of information. It pro
 ├── /pkg  
 │   ├── /executor   \# Core logic for running and managing commands  
 │   ├── /config     \# Configuration loading and validation  
-│   ├── /backoff    \# Backoff strategies (exponential, fixed, etc.)  
+│   ├── /backoff    \# Backoff strategies (fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci)  
 │   ├── /conditions \# Logic for checking success/failure conditions  
 │   ├── /metrics    \# Structs and client for sending data to patienced  
 │   └── /ui         \# Handles terminal output and status reporting  

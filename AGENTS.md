@@ -23,7 +23,7 @@
 - `/cmd/patience` - Main CLI package using Cobra
 - `/pkg/executor` - Core retry logic and command execution
 - `/pkg/config` - Configuration loading and validation
-- `/pkg/backoff` - Backoff strategies (exponential, fixed, jitter)
+- `/pkg/backoff` - Backoff strategies (fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci)
 - `/pkg/conditions` - Success/failure condition checking
 - `/pkg/metrics` - Metrics collection and daemon communication
 - `/pkg/ui` - Terminal output and status reporting

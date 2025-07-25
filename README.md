@@ -14,7 +14,7 @@ We've all been there – a deployment script fails because of a temporary networ
 
 - **Simple and intuitive** – Just prefix your command with `patience`
 - **Configurable attempts** – Set how many times to try
-- **Smart backoff strategies** – Choose between fixed delays or exponential backoff
+- **Smart backoff strategies** – Choose from fixed, exponential, jitter, linear, decorrelated-jitter, or fibonacci backoff
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
@@ -53,6 +53,12 @@ patience --attempts 3 --delay 2s -- ping -c 1 google.com
 
 # Use exponential backoff (1s, 2s, 4s, 8s...)
 patience --attempts 5 --delay 1s --backoff exponential -- flaky-api-call
+
+# Use jitter backoff (random delays to prevent thundering herd)
+patience --attempts 5 --delay 1s --backoff jitter -- api-call
+
+# Use linear backoff (1s, 2s, 3s, 4s...)
+patience --attempts 5 --delay 1s --backoff linear -- predictable-delays
 
 # Set a timeout for each attempt
 patience --timeout 30s -- wget https://large-file.example.com/download
@@ -134,13 +140,76 @@ patience --failure-pattern "\berror\b" -- log-parser.sh
 patience --success-pattern "(deployed|updated) successfully" -- deploy.sh
 ```
 
+## Backoff Strategies
+
+`patience` supports multiple backoff strategies to handle different retry scenarios:
+
+### Fixed Delay
+Waits the same amount of time between each attempt.
+```bash
+# Wait 2 seconds between each attempt
+patience --attempts 5 --delay 2s --backoff fixed -- flaky-command
+```
+
+### Exponential Backoff
+Doubles the delay after each failed attempt (1s, 2s, 4s, 8s...).
+```bash
+# Start with 1s, then 2s, 4s, 8s...
+patience --attempts 5 --delay 1s --backoff exponential -- api-call
+
+# Custom multiplier (1s, 1.5s, 2.25s, 3.375s...)
+patience --attempts 5 --delay 1s --backoff exponential --multiplier 1.5 -- api-call
+
+# With maximum delay cap
+patience --attempts 5 --delay 1s --backoff exponential --max-delay 10s -- api-call
+```
+
+### Jitter (Full Jitter)
+Adds randomness to exponential backoff to prevent thundering herd problems when multiple instances retry simultaneously.
+```bash
+# Random delays between 0 and exponential backoff time
+patience --attempts 5 --delay 1s --backoff jitter -- distributed-api-call
+```
+
+### Linear Backoff
+Increases delay by a fixed increment each attempt (1s, 2s, 3s, 4s...).
+```bash
+# Predictable, incremental delays
+patience --attempts 5 --delay 1s --backoff linear -- gradual-retry
+```
+
+### Decorrelated Jitter
+AWS-recommended strategy that uses the previous delay to calculate the next delay, creating better distribution for distributed systems.
+```bash
+# Smart jitter based on previous delay
+patience --attempts 5 --delay 1s --backoff decorrelated-jitter --multiplier 3.0 -- aws-api-call
+```
+
+### Fibonacci Backoff
+Uses the Fibonacci sequence for delays (1s, 1s, 2s, 3s, 5s, 8s...), providing a middle ground between linear and exponential growth.
+```bash
+# Fibonacci sequence delays
+patience --attempts 6 --delay 1s --backoff fibonacci -- moderate-growth-retry
+```
+
+### Strategy Comparison
+
+| Strategy | Growth Pattern | Use Case | Example Delays (1s base) |
+|----------|----------------|----------|---------------------------|
+| `fixed` | Constant | Simple retries, testing | 1s, 1s, 1s, 1s |
+| `exponential` | Exponential | Network calls, APIs | 1s, 2s, 4s, 8s |
+| `jitter` | Random exponential | Distributed systems | 0.3s, 1.8s, 0.9s, 5.2s |
+| `linear` | Linear | Predictable delays | 1s, 2s, 3s, 4s |
+| `decorrelated-jitter` | Smart random | AWS services, high-scale | 1.2s, 2.8s, 1.9s, 4.1s |
+| `fibonacci` | Fibonacci | Moderate growth | 1s, 1s, 2s, 3s, 5s, 8s |
+
 ## Command-Line Options
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--attempts` | `-a` | `3` | Maximum number of attempts |
 | `--delay` | `-d` | `0` | Base delay between attempts (e.g., `1s`, `500ms`) |
-| `--backoff` | | `fixed` | Backoff strategy: `fixed` or `exponential` |
+| `--backoff` | | `fixed` | Backoff strategy: `fixed`, `exponential`, `jitter`, `linear`, `decorrelated-jitter`, or `fibonacci` |
 | `--multiplier` | | `2.0` | Multiplier for exponential backoff |
 | `--max-delay` | | `0` | Maximum delay for exponential backoff (0 = no limit) |
 | `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`) |
@@ -155,7 +224,7 @@ patience --success-pattern "(deployed|updated) successfully" -- deploy.sh
 2. **Check the result** – Determine success using pattern matching (if configured) or exit code
 3. **Pattern precedence** – Failure patterns override success patterns, which override exit codes
 4. **Exit on success** – If the command succeeds, `patience` exits immediately (remaining attempts are skipped)
-5. **Calculate delay** – Use fixed delay or exponential backoff based on attempt number
+5. **Calculate delay** – Use the configured backoff strategy (fixed, exponential, jitter, linear, decorrelated-jitter, or fibonacci) based on attempt number
 6. **Wait patiently** – If it fails, wait for the calculated delay and try again with grace
 7. **Respect limits** – Stop after the maximum number of attempts or max delay reached
 8. **Preserve exit codes** – The final exit code matches your command's result
@@ -233,7 +302,7 @@ The project is organized into clean, testable packages:
 
 - `cmd/patience` – CLI interface using Cobra
 - `pkg/executor` – Core retry logic and command execution
-- `pkg/backoff` – Backoff strategies (fixed delay and exponential backoff)
+- `pkg/backoff` – Backoff strategies (fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci)
 - `pkg/conditions` – Pattern matching for success/failure detection
 
 ## Contributing
