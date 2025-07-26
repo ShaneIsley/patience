@@ -108,71 +108,47 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "patience [flags] -- command [args...]",
-	Short: "Patiently patience a command until it succeeds or max attempts reached",
-	Long: `patience is a CLI tool that executes a command and retries it on failure with grace.
-It supports configurable patience attempts, delays between retries, and timeouts.
+	Use:   "patience STRATEGY [STRATEGY-OPTIONS] -- COMMAND [ARGS...]",
+	Short: "Intelligent retry wrapper with adaptive backoff strategies",
+	Long: `patience is a CLI tool that executes commands with intelligent retry strategies.
+It supports multiple backoff strategies including HTTP-aware retries that respect
+server timing hints.
 
-Configuration precedence (highest to lowest):
-1. CLI flags
-2. Environment variables (PATIENCE_*)
-3. Configuration file
-4. Default values
+Available Strategies:
+  http-aware           HTTP response-aware delays (respects Retry-After headers)
+  exponential          Exponentially increasing delays  
+  linear               Linearly increasing delays
+  fixed                Fixed delay between retries
+  jitter               Random jitter around base delay
+  decorrelated-jitter  AWS-style decorrelated jitter
+  fibonacci            Fibonacci sequence delays
 
-Configuration can be loaded from a TOML file. The tool looks for configuration files
-in the following order:
-1. File specified by --config flag
-2. .patience.toml in current directory
-3. patience.toml in current directory
-4. .patience.toml in home directory
-
-Environment variables:
-- PATIENCE_ATTEMPTS: Maximum number of attempts
-- PATIENCE_DELAY: Base delay between attempts (e.g., "1s", "500ms")
-- PATIENCE_TIMEOUT: Timeout per attempt (e.g., "30s", "1m")
-- PATIENCE_BACKOFF: Backoff strategy ("fixed", "exponential", "jitter", "linear", "decorrelated-jitter", or "fibonacci")
-- PATIENCE_MAX_DELAY: Maximum delay for exponential backoff
-- PATIENCE_MULTIPLIER: Multiplier for exponential backoff
-- PATIENCE_SUCCESS_PATTERN: Regex pattern for success detection
-- PATIENCE_FAILURE_PATTERN: Regex pattern for failure detection
-- PATIENCE_CASE_INSENSITIVE: Case-insensitive pattern matching ("true" or "false")
+Use "patience STRATEGY --help" for strategy-specific options.
 
 EXAMPLES:
-  # Basic retry with exponential backoff
-  patience --attempts 5 --delay 1s --backoff exponential -- curl -f https://api.example.com
+  # HTTP-aware retry for API calls
+  patience http-aware --fallback exponential -- curl -i https://api.github.com
 
-  # Pattern-based success detection
-  patience --success-pattern "deployment successful" -- ./deploy.sh
+  # Exponential backoff with custom parameters
+  patience exponential --base-delay 1s --multiplier 2.0 -- curl https://api.stripe.com
 
-  # Distributed system with jitter to prevent thundering herd
-  patience --backoff jitter --delay 1s --max-delay 10s -- api-call
+  # Linear backoff for database connections
+  patience linear --increment 5s --max-delay 60s -- psql -h db.example.com
 
-  # Environment variable usage
-  PATIENCE_ATTEMPTS=5 PATIENCE_BACKOFF=fibonacci patience -- flaky-command
-
-  # Configuration file with flag override
-  patience --config myproject.toml --attempts 10 -- integration-test`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runRetry,
+  # Using abbreviations for brevity
+  patience ha -f exp -- curl -i https://api.github.com
+  patience exp -b 1s -x 2.0 -- curl https://api.stripe.com`,
 }
 
 func init() {
-	// Configuration file flag
-	rootCmd.Flags().StringVar(&configFile, "config", "", "Configuration file path")
-
-	// Debug flag
-	rootCmd.Flags().BoolVar(&debugConfig, "debug-config", false, "Show configuration resolution debug information")
-
-	// CLI flags (these will override config file and environment values)
-	rootCmd.Flags().IntVarP(&flagConfig.Attempts, "attempts", "a", 0, "Maximum retry attempts (default: 3, range: 1-1000)")
-	rootCmd.Flags().DurationVarP(&flagConfig.Delay, "delay", "d", 0, "Base delay between attempts (default: 0 = no delay, examples: 1s, 500ms)")
-	rootCmd.Flags().DurationVarP(&flagConfig.Timeout, "timeout", "t", 0, "Timeout per attempt (default: 0 = no timeout, examples: 30s, 1m)")
-	rootCmd.Flags().StringVar(&flagConfig.BackoffType, "backoff", "", "Backoff strategy (default: fixed)\n                                 Options: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci")
-	rootCmd.Flags().DurationVar(&flagConfig.MaxDelay, "max-delay", 0, "Maximum delay cap (default: 0 = no limit, valid with: exponential, jitter, linear, decorrelated-jitter, fibonacci)")
-	rootCmd.Flags().Float64Var(&flagConfig.Multiplier, "multiplier", 0, "Backoff multiplier (default: 2.0, valid with: exponential, jitter, decorrelated-jitter)")
-	rootCmd.Flags().StringVar(&flagConfig.SuccessPattern, "success-pattern", "", "Regex pattern for success detection in command output")
-	rootCmd.Flags().StringVar(&flagConfig.FailurePattern, "failure-pattern", "", "Regex pattern for failure detection in command output")
-	rootCmd.Flags().BoolVar(&flagConfig.CaseInsensitive, "case-insensitive", false, "Case-insensitive pattern matching")
+	// Add strategy subcommands
+	rootCmd.AddCommand(createHTTPAwareCommand())
+	rootCmd.AddCommand(createExponentialCommand())
+	rootCmd.AddCommand(createLinearCommand())
+	rootCmd.AddCommand(createFixedCommand())
+	rootCmd.AddCommand(createJitterCommand())
+	rootCmd.AddCommand(createDecorrelatedJitterCommand())
+	rootCmd.AddCommand(createFibonacciCommand())
 }
 
 // loadConfiguration loads configuration with full precedence support

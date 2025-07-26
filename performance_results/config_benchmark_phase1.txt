@@ -1,0 +1,83 @@
+=== Configuration Performance Benchmarking ===
+Platform: Darwin arm64
+Date: Sat 26 Jul 2025 09:06:19 AEST
+
+Testing: Simple TOML configuration
+Setup: echo 'attempts = 3' > simple.toml
+Command: ../patience --config simple.toml --attempts 1 -- echo test
+  Average: 6.81ms
+
+Testing: Complex TOML configuration
+Setup: cat > complex.toml << 'EOF'
+attempts = 10
+delay = "500ms"
+timeout = "30s"
+backoff = "exponential"
+max_delay = "10s"
+multiplier = 2.5
+success_pattern = "(?i)(success|completed|ready)"
+failure_pattern = "(?i)(error|failed|timeout)"
+case_insensitive = true
+EOF
+Command: ../patience --config complex.toml --attempts 1 -- echo test
+  Average: 6.72ms
+
+Testing: Minimal environment variables
+Setup: export PATIENCE_ATTEMPTS=3
+Command: ../patience --attempts 1 -- echo test
+  Average: 6.62ms
+
+Testing: Comprehensive environment variables
+Setup: export PATIENCE_ATTEMPTS=5
+export PATIENCE_DELAY=100ms
+export PATIENCE_TIMEOUT=30s
+export PATIENCE_BACKOFF=exponential
+export PATIENCE_MAX_DELAY=5s
+export PATIENCE_MULTIPLIER=2.0
+export PATIENCE_SUCCESS_PATTERN=success
+export PATIENCE_FAILURE_PATTERN=error
+export PATIENCE_CASE_INSENSITIVE=true
+Command: ../patience --attempts 1 -- echo test
+  Average: 6.73ms
+
+Testing: Precedence resolution (config + env + flags)
+Setup: echo 'attempts = 10' > precedence.toml
+export PATIENCE_DELAY=200ms
+Command: ../patience --config precedence.toml --attempts 1 --backoff exponential -- echo test
+  Average: 7.12ms
+
+Testing: Auto-discovery of .patience.toml
+Setup: echo 'attempts = 5' > .patience.toml
+Command: ../patience --attempts 1 -- echo test
+  Average: 7.25ms
+
+Testing: Invalid configuration handling
+Setup: echo 'invalid_field = true' > invalid.toml
+Command: ../patience --config invalid.toml --attempts 1 -- echo test || true
+  Average: 7.29ms
+
+Testing: Large configuration file with comments
+Setup: cat > large.toml << 'EOF'
+# Large configuration file with comments
+attempts = 100
+delay = "1s"
+timeout = "60s"
+backoff = "decorrelated-jitter"
+max_delay = "30s"
+multiplier = 3.0
+
+# Pattern matching configuration
+success_pattern = "(?i)(deployment|build|test|integration).*(successful|completed|passed|ready|ok|done)"
+failure_pattern = "(?i)(error|failed|timeout|exception|panic|crash|abort|kill|terminate)"
+case_insensitive = true
+
+# Additional comments to increase file size
+# This is a comprehensive configuration for production use
+# It includes all available options with sensible defaults
+# The patterns are designed to catch common success/failure indicators
+# in modern CI/CD and deployment scenarios
+EOF
+Command: ../patience --config large.toml --attempts 1 -- echo test
+  Average: 7.44ms
+
+=== Configuration Benchmarking Complete ===

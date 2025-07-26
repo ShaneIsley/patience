@@ -1,0 +1,7 @@
+=== Phase 2.2: Backoff Strategy Performance Analysis ===
+Platform: Darwin arm64
+Date: Sat 26 Jul 2025 11:46:34 AEST
+
+1. Low Attempt Count Comparison (5 attempts, 10ms delay)
+Testing fixed strategy (low attempts):
+  Command: ../patience --attempts 5 --delay 10ms --backoff fixed -- false

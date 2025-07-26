@@ -1,0 +1,234 @@
+=== Phase 3.2: Integration Performance Testing ===
+Platform: Darwin arm64
+Date: Sat 26 Jul 2025 11:48:24 AEST
+
+1. CI/CD Pipeline Integration Testing
+Simulating GitHub Actions-style workflow:
+  Testing CI step: checkout
+[retry] Attempt 1/3 starting...
+[CI] Checking out code...
+[CI] Code checkout completed successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.6s
+  Final Reason: success pattern matched
+    Duration: 619.30ms
+  Testing CI step: build
+[retry] Attempt 1/3 starting...
+[CI] Building application...
+[CI] Build completed successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.2s
+  Final Reason: success pattern matched
+    Duration: 217.46ms
+  Testing CI step: test
+[retry] Attempt 1/3 starting...
+[CI] Running tests...
+[CI] All tests passed successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.3s
+  Final Reason: success pattern matched
+    Duration: 321.69ms
+  Testing CI step: deploy
+[retry] Attempt 1/3 starting...
+[CI] Deploying application...
+[CI] Deployment completed successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.2s
+  Final Reason: success pattern matched
+    Duration: 229.04ms
+
+2. Container Environment Simulation
+Testing Docker-like container scenarios:
+  Testing container operation: start
+[retry] Attempt 1/3 starting...
+[CONTAINER] Starting container...
+[CONTAINER] Container started successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.3s
+  Final Reason: success pattern matched
+    Duration: 334.83ms
+  Testing container operation: health
+[retry] Attempt 1/3 starting...
+[CONTAINER] Checking container health...
+[CONTAINER] Container is healthy and responding
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.1s
+  Final Reason: success pattern matched
+    Duration: 63.34ms
+  Testing container operation: stop
+[retry] Attempt 1/3 starting...
+[CONTAINER] Stopping container...
+[CONTAINER] Container stopped successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.1s
+  Final Reason: success pattern matched
+    Duration: 116.13ms
+
+3. Shell Script Integration Testing
+Testing patience as part of complex shell scripts:
+  Running complex integration script:
+[SCRIPT] Starting complex deployment script...
+[SCRIPT] Step 1: Database migration
+[retry] Attempt 1/3 starting...
+[DB] Running database migration...
+[DB] Database migration complete
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.1s
+  Final Reason: success pattern matched
+[SCRIPT] Step 2: Service deployment
+[retry] Attempt 1/5 starting...
+[DEPLOY] Deploying service...
+[DEPLOY] Service deployed successfully
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.2s
+  Final Reason: success pattern matched
+[SCRIPT] Step 3: Health verification
+[retry] Attempt 1/4 starting...
+[HEALTH] Verifying service health...
+[HEALTH] All services are healthy
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.1s
+  Final Reason: exit code 0
+[SCRIPT] Complex deployment script completed successfully!
+  Total script duration: 1s
+  Integration test successful
+
+4. Environment Variable Integration Testing
+Testing environment variable precedence in integration scenarios:
+  Testing configuration precedence:
+[retry] Attempt 1/1 starting...
+[TEST] Testing configuration precedence
+[TEST] This should match env success pattern
+✅ [retry] Command succeeded after 1 attempt.
+
+Run Statistics:
+  Total Attempts: 1
+  Successful Runs: 1
+  Failed Runs: 0
+  Total Duration: 0.3s
+  Final Reason: success pattern matched
+    Duration: 267.84ms
+    Precedence test successful
+
+5. Performance Under Integration Load
+Testing patience performance in integration scenarios:
+[retry] Attempt 1/2 starting...
+[retry] Attempt 1/2 starting...
+[retry] Attempt 1/2 starting...
+[LOAD-1] Processing batch 1
+[LOAD-1] Batch 1 completed successfully
+[LOAD-1] Processing batch 2
+[LOAD-1] Batch 2 completed successfully
+[LOAD-1] Processing batch 3
+[LOAD-1] Batch 3 failed
+[retry] Attempt 1/2 failed (exit code 1). Retrying in 0.0s.
+[retry] Attempt 2/2 starting...
+[LOAD-1] Processing batch 1
+[LOAD-2] Processing batch 1
+[LOAD-1] Batch 1 failed
+[retry] Attempt 2/2 failed (exit code 1).
+❌ [retry] Command failed after 2 attempts.
+
+Run Statistics:
+  Total Attempts: 2
+  Successful Runs: 0
+  Failed Runs: 2
+  Total Duration: 0.5s
+  Final Reason: max retries reached (exit code 1)
+[LOAD-2] Batch 1 completed successfully
+[LOAD-2] Processing batch 2
+[LOAD-2] Batch 2 completed successfully
+[LOAD-2] Processing batch 3
+[LOAD-2] Batch 3 failed
+[retry] Attempt 1/2 failed (exit code 1). Retrying in 0.0s.
+[retry] Attempt 2/2 starting...
+[LOAD-2] Processing batch 1
+[LOAD-3] Processing batch 1
+[LOAD-2] Batch 1 completed successfully
+[LOAD-2] Processing batch 2
+[LOAD-3] Batch 1 failed
+[retry] Attempt 1/2 failed (exit code 1). Retrying in 0.0s.
+[LOAD-2] Batch 2 completed successfully
+[LOAD-2] Processing batch 3
+[retry] Attempt 2/2 starting...
+[LOAD-3] Processing batch 1
+[LOAD-2] Batch 3 completed successfully
+[LOAD-2] Processing batch 4
+[LOAD-3] Batch 1 completed successfully
+[LOAD-3] Processing batch 2
+[LOAD-2] Batch 4 failed
+[retry] Attempt 2/2 failed (exit code 1).
+❌ [retry] Command failed after 2 attempts.
+
+Run Statistics:
+  Total Attempts: 2
+  Successful Runs: 0
+  Failed Runs: 2
+  Total Duration: 0.8s
+  Final Reason: max retries reached (exit code 1)
+[LOAD-3] Batch 2 completed successfully
+[LOAD-3] Processing batch 3
+[LOAD-3] Batch 3 completed successfully
+[LOAD-3] Processing batch 4
+[LOAD-3] Batch 4 completed successfully
+[LOAD-3] Processing batch 5
+[LOAD-3] Batch 5 completed successfully
+[LOAD-3] All batches completed successfully
+✅ [retry] Command succeeded after 2 attempts.
+
+Run Statistics:
+  Total Attempts: 2
+  Successful Runs: 1
+  Failed Runs: 1
+  Total Duration: 1.03s
+  Final Reason: success pattern matched
