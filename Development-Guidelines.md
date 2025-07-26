@@ -1,6 +1,6 @@
 # **Go Development & TDD Guidelines**
 
-This document outlines the Test-Driven Development (TDD) philosophy and the general Go development best practices for the patience CLI project. Adhering to these guidelines is mandatory to ensure a high-quality, maintainable, and robust codebase.
+This document outlines the Test-Driven Development (TDD) philosophy and the general Go development best practices for the patience CLI project with its modern subcommand architecture and HTTP-aware intelligence. Adhering to these guidelines is mandatory to ensure a high-quality, maintainable, and robust codebase.
 
 ## **Part 1: Test-Driven Development (TDD)**
 
@@ -32,12 +32,17 @@ We will strictly follow the "Red, Green, Refactor" cycle for all new feature dev
 * **What to Test:**  
   * All exported functions and methods.  
   * Core business logic (retry loops, backoff calculations, condition checking).  
-  * Edge cases (zero values, nil inputs, error conditions).  
-  * A small number of integration tests to verify the interaction between major components (e.g., CLI parsing \-\> Executor).  
+  * **HTTP-aware intelligence** (HTTP response parsing, header extraction, JSON parsing).
+  * **Subcommand functionality** (argument parsing, configuration validation, strategy creation).
+  * **Strategy implementations** (all 7 backoff strategies with their specific behaviors).
+  * Edge cases (zero values, nil inputs, error conditions, malformed HTTP responses).  
+  * Integration tests to verify the interaction between major components (CLI parsing → Strategy → Executor).
+  * **Real HTTP integration tests** (testing against actual APIs when possible).
 * **What NOT to Test:**  
   * Private functions directly (test them via the public API).  
   * Third-party libraries (assume they work; test that *our* code uses them correctly).  
   * Trivial getters/setters.
+  * **External API availability** (use mocks for unreliable external services).
 
 ## **Part 2: General Go Development Practices**
 
@@ -66,10 +71,16 @@ We will use golangci-lint as our standard linter to enforce code quality and cat
 We will adhere to the principles outlined in the official "Effective Go" documentation. Key takeaways for this project include:
 
 * **Simplicity:** Prefer clear, simple code over clever or complex solutions.  
-* **Interfaces:** Use interfaces to define behavior, not to describe data. Accept interfaces, return structs. This promotes decoupling and testability.  
-* **Error Handling:** Errors are values. Handle errors explicitly; do not discard them. Use the errors package to wrap errors to provide context. Avoid panicking in library code.  
+* **Interfaces:** Use interfaces to define behavior, not to describe data. Accept interfaces, return structs. This promotes decoupling and testability.
+  * **Strategy Pattern:** All backoff strategies implement the `backoff.Strategy` interface.
+  * **HTTP Parsing:** Use standard library interfaces for HTTP response handling.
+* **Error Handling:** Errors are values. Handle errors explicitly; do not discard them. Use the errors package to wrap errors to provide context. Avoid panicking in library code.
+  * **HTTP Parsing Errors:** Gracefully handle malformed HTTP responses with fallback behavior.
+  * **Configuration Errors:** Provide clear, actionable error messages for invalid configurations.
 * **Concurrency:** When using goroutines, ensure there is a clear plan for managing their lifecycle. Use channels for communication and synchronization. Be mindful of race conditions (use go test \-race).  
 * **Package Design:** Packages should have a clear, singular purpose. Avoid generic utility packages like utils or helpers.
+  * **Subcommand Organization:** Each strategy subcommand is self-contained with its own configuration and validation.
+  * **HTTP Intelligence:** HTTP-aware functionality is contained within the backoff package.
 
 ### **2.4. Dependency Management**
 
@@ -83,10 +94,43 @@ We will adhere to the principles outlined in the official "Effective Go" documen
 * **Clarity over Brevity:** Comments should be complete sentences. For complex, unexported functions, add comments to explain the *why* behind the implementation.  
 * **Tests as Documentation:** A well-written test serves as executable documentation. Test function names should be descriptive of the behavior they are testing.
 
-### **2.6. Version Control**
+### **2.6. Project-Specific Patterns**
+
+#### **Subcommand Architecture Patterns**
+
+* **Configuration Structs:** Each strategy has its own configuration struct (e.g., `HTTPAwareConfig`, `ExponentialConfig`).
+* **Validation Methods:** All configuration structs implement a `Validate() error` method.
+* **Common Configuration:** Use `CommonConfig` for shared options (attempts, timeout, patterns).
+* **Strategy Creation:** Each subcommand creates its strategy and calls `executeWithStrategy()` or similar.
+
+#### **HTTP-Aware Intelligence Patterns**
+
+* **Response Parsing:** Use Go standard library for HTTP parsing (`net/http`, `encoding/json`).
+* **Graceful Fallback:** Always provide fallback behavior when HTTP parsing fails.
+* **Header Extraction:** Parse `Retry-After` headers with support for both relative and absolute formats.
+* **JSON Field Extraction:** Look for common retry fields (`retry_after`, `retryAfter`, `retry_in`).
+
+#### **Strategy Implementation Patterns**
+
+* **Interface Compliance:** All strategies implement `backoff.Strategy` interface.
+* **Immutable Configuration:** Strategy configuration should be immutable after creation.
+* **Deterministic Testing:** Provide deterministic behavior for testing (avoid pure randomness).
+* **Boundary Validation:** Validate all timing parameters (non-negative, reasonable maximums).
+
+#### **Testing Patterns**
+
+* **Table-Driven Tests:** Use table-driven tests for multiple input/output scenarios.
+* **HTTP Mocking:** Use `httptest.Server` for HTTP integration tests.
+* **Real API Testing:** Include optional tests against real APIs (marked with build tags).
+* **Subcommand Testing:** Test CLI parsing and configuration validation separately from execution.
+
+### **2.7. Version Control**
 
 * **Commit Messages:** We will use the [Conventional Commits](https://www.conventionalcommits.org/) specification. This creates an explicit commit history that is easy to read and can be used for automated changelog generation.  
-  * Example: feat(executor): add support for stdout regex matching  
+  * Example: feat(http-aware): add support for JSON retry field parsing
+  * Example: feat(subcommands): implement linear backoff strategy subcommand
   * Example: fix(backoff): correct calculation in exponential strategy  
-  * Example: docs(readme): update usage examples  
+  * Example: docs(readme): update usage examples for subcommand interface
+  * Example: test(http-aware): add integration tests for GitHub API
 * **Small, Atomic Commits:** Each commit should represent a single logical change. Avoid large, monolithic commits that mix features, bug fixes, and refactoring.
+* **Strategy-Focused Commits:** When adding new strategies, include the subcommand, tests, and documentation in the same commit.
