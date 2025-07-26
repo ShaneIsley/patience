@@ -8,9 +8,15 @@ import (
 
 // Strategy defines the interface for backoff strategies
 type Strategy interface {
-	// Delay returns the duration to wait before the next attempt
-	// attempt is 1-based (1 for first retry, 2 for second retry, etc.)
+	// Delay returns the delay duration for the given attempt number
 	Delay(attempt int) time.Duration
+}
+
+// HTTPAwareStrategy defines the interface for strategies that can process HTTP command output
+type HTTPAwareStrategy interface {
+	Strategy
+	// ProcessCommandOutput analyzes command output to extract HTTP retry timing
+	ProcessCommandOutput(stdout, stderr string, exitCode int)
 }
 
 // Fixed implements a fixed delay strategy

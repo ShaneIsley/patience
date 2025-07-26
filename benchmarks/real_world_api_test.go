@@ -94,7 +94,7 @@ func TestMockAPIScenarios(t *testing.T) {
 
 		start := time.Now()
 		cmd := exec.Command(binary, "http-aware", "--attempts", "3",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 
@@ -135,7 +135,7 @@ func TestMockAPIScenarios(t *testing.T) {
 
 		start := time.Now()
 		cmd := exec.Command(binary, "http-aware", "--attempts", "3",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 
@@ -164,7 +164,7 @@ func TestMockAPIScenarios(t *testing.T) {
 
 		start := time.Now()
 		cmd := exec.Command(binary, "http-aware", "--fallback", "exponential", "--attempts", "3",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		_, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 
@@ -191,7 +191,7 @@ func TestMockAPIScenarios(t *testing.T) {
 				defer server.Close()
 
 				cmd := exec.Command(binary, "http-aware", "--attempts", "2",
-					"--", "curl", "-s", server.URL)
+					"--", "curl", "-f", "-s", server.URL)
 				output, _ := cmd.CombinedOutput()
 
 				// Most status codes should succeed (curl doesn't fail by default)
@@ -218,7 +218,7 @@ func TestAPIPatternMatching(t *testing.T) {
 
 		cmd := exec.Command(binary, "http-aware", "--attempts", "1",
 			"--success-pattern", `"status":\s*"success"`,
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		_, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -236,7 +236,7 @@ func TestAPIPatternMatching(t *testing.T) {
 
 		cmd := exec.Command(binary, "http-aware", "--attempts", "1",
 			"--failure-pattern", `"status":\s*"error"`,
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		_, err := cmd.CombinedOutput()
 
 		// Should fail due to failure pattern match
@@ -285,7 +285,7 @@ func TestLoadBalancerScenarios(t *testing.T) {
 
 		cmd := exec.Command(binary, "exponential", "--attempts", "5", "--base-delay", "10ms",
 			"--success-pattern", "Service ready",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -318,7 +318,7 @@ func TestLoadBalancerScenarios(t *testing.T) {
 		defer server.Close()
 
 		cmd := exec.Command(binary, "linear", "--attempts", "4", "--increment", "10ms",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 
 		// Should fail after all attempts
@@ -360,7 +360,7 @@ func TestDatabaseConnectionScenarios(t *testing.T) {
 		start := time.Now()
 		cmd := exec.Command(binary, "fibonacci", "--attempts", "6", "--base-delay", "10ms",
 			"--success-pattern", "ready for connections",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 
@@ -387,7 +387,7 @@ func TestDatabaseConnectionScenarios(t *testing.T) {
 		defer server.Close()
 
 		cmd := exec.Command(binary, "decorrelated-jitter", "--attempts", "3", "--base-delay", "10ms",
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 
 		// Should fail after retries
@@ -428,7 +428,7 @@ func TestMicroserviceScenarios(t *testing.T) {
 		start := time.Now()
 		cmd := exec.Command(binary, "http-aware", "--attempts", "4", "--fallback", "jitter",
 			"--success-pattern", `"status":\s*"healthy"`,
-			"--", "curl", "-s", server.URL)
+			"--", "curl", "-f", "-s", server.URL)
 		output, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 
@@ -512,7 +512,7 @@ func BenchmarkRealWorldPerformance(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			cmd := exec.Command(binary, "http-aware", "--attempts", "1",
-				"--", "curl", "-s", server.URL)
+				"--", "curl", "-f", "-s", server.URL)
 			err := cmd.Run()
 			elapsed := time.Since(start)
 

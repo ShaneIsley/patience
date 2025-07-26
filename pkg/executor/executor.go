@@ -233,6 +233,13 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			Success:  conditionResult.Success,
 		})
 
+		// Process command output for HTTP-aware strategies
+		if httpAware, ok := e.BackoffStrategy.(interface {
+			ProcessCommandOutput(stdout, stderr string, exitCode int)
+		}); ok {
+			httpAware.ProcessCommandOutput(output.Stdout, output.Stderr, output.ExitCode)
+		}
+
 		// If command succeeded, return immediately
 		if conditionResult.Success {
 			stats.Finalize(true, conditionResult.Reason)

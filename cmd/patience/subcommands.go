@@ -2,9 +2,16 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/shaneisley/patience/pkg/backoff"
+	"github.com/shaneisley/patience/pkg/conditions"
+	"github.com/shaneisley/patience/pkg/executor"
+	"github.com/shaneisley/patience/pkg/metrics"
+	"github.com/shaneisley/patience/pkg/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -15,10 +22,72 @@ var (
 	lastParsedCommand     []string
 )
 
+// CommonConfig holds configuration options common to all strategies
+type CommonConfig struct {
+	Attempts        int           `json:"attempts"`
+	Timeout         time.Duration `json:"timeout"`
+	SuccessPattern  string        `json:"success_pattern"`
+	FailurePattern  string        `json:"failure_pattern"`
+	CaseInsensitive bool          `json:"case_insensitive"`
+}
+
+// Validate validates the common configuration
+func (c CommonConfig) Validate() error {
+	if c.Attempts < 1 || c.Attempts > 1000 {
+		return fmt.Errorf("attempts must be between 1 and 1000, got %d", c.Attempts)
+	}
+
+	if c.Timeout < 0 {
+		return fmt.Errorf("timeout must be non-negative, got %v", c.Timeout)
+	}
+
+	// Validate regex patterns
+	if c.SuccessPattern != "" {
+		if _, err := regexp.Compile(c.SuccessPattern); err != nil {
+			return fmt.Errorf("invalid success pattern: %w", err)
+		}
+	}
+
+	if c.FailurePattern != "" {
+		if _, err := regexp.Compile(c.FailurePattern); err != nil {
+			return fmt.Errorf("invalid failure pattern: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// NewCommonConfig creates a new CommonConfig with default values
+func NewCommonConfig() CommonConfig {
+	return CommonConfig{
+		Attempts:        3,
+		Timeout:         0, // No timeout by default
+		SuccessPattern:  "",
+		FailurePattern:  "",
+		CaseInsensitive: false,
+	}
+}
+
 // HTTPAwareConfig holds configuration for HTTP-aware strategy
 type HTTPAwareConfig struct {
 	Fallback string
 	MaxDelay time.Duration
+}
+
+// Validate validates the HTTP-aware configuration
+func (h HTTPAwareConfig) Validate() error {
+	if h.MaxDelay < 0 {
+		return fmt.Errorf("max-delay must be non-negative, got %v", h.MaxDelay)
+	}
+
+	validFallbacks := []string{"exponential", "exp", "linear", "lin", "fixed", "fix", "jitter", "jit", "decorrelated-jitter", "dj", "fibonacci", "fib"}
+	for _, valid := range validFallbacks {
+		if h.Fallback == valid {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("unknown fallback strategy: %s", h.Fallback)
 }
 
 // ExponentialConfig holds configuration for exponential strategy
@@ -28,9 +97,36 @@ type ExponentialConfig struct {
 	MaxDelay   time.Duration
 }
 
+// Validate validates the exponential configuration
+func (e ExponentialConfig) Validate() error {
+	if e.BaseDelay < 0 {
+		return fmt.Errorf("base-delay must be non-negative, got %v", e.BaseDelay)
+	}
+
+	if e.Multiplier <= 0 {
+		return fmt.Errorf("multiplier must be positive, got %f", e.Multiplier)
+	}
+
+	if e.MaxDelay < 0 {
+		return fmt.Errorf("max-delay must be non-negative, got %v", e.MaxDelay)
+	}
+
+	return nil
+}
+
+// addCommonFlags adds common configuration flags to a command
+func addCommonFlags(cmd *cobra.Command, config *CommonConfig) {
+	cmd.Flags().IntVarP(&config.Attempts, "attempts", "a", 3, "Maximum retry attempts (1-1000)")
+	cmd.Flags().DurationVarP(&config.Timeout, "timeout", "t", 0, "Timeout per attempt (0 = no timeout)")
+	cmd.Flags().StringVar(&config.SuccessPattern, "success-pattern", "", "Regex pattern for success detection")
+	cmd.Flags().StringVar(&config.FailurePattern, "failure-pattern", "", "Regex pattern for failure detection")
+	cmd.Flags().BoolVar(&config.CaseInsensitive, "case-insensitive", false, "Case-insensitive pattern matching")
+}
+
 // createHTTPAwareCommand creates the http-aware subcommand
 func createHTTPAwareCommand() *cobra.Command {
-	var config HTTPAwareConfig
+	var strategyConfig HTTPAwareConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "http-aware [OPTIONS] -- COMMAND [ARGS...]",
@@ -48,23 +144,38 @@ Falls back to specified strategy when no HTTP information is available.`,
 				return fmt.Errorf("no command specified after '--'")
 			}
 
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			if err := strategyConfig.Validate(); err != nil {
+				return err
+			}
+
 			// Store parsed config and command for testing
-			lastHTTPAwareConfig = config
+			lastHTTPAwareConfig = strategyConfig
 			lastParsedCommand = args
 
-			// Create strategy and execute
-			return executeWithHTTPAware(config, args)
+			// Execute with integrated executor
+			return executeWithHTTPAware(strategyConfig, commonConfig, args)
 		},
-	} // Add flags
-	cmd.Flags().StringVarP(&config.Fallback, "fallback", "f", "exponential", "Fallback strategy when no HTTP info available")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 30*time.Minute, "Maximum delay cap")
+	}
+
+	// Add strategy-specific flags
+	cmd.Flags().StringVarP(&strategyConfig.Fallback, "fallback", "f", "exponential", "Fallback strategy when no HTTP info available")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 30*time.Minute, "Maximum delay cap")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // createExponentialCommand creates the exponential subcommand
 func createExponentialCommand() *cobra.Command {
-	var config ExponentialConfig
+	var strategyConfig ExponentialConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "exponential [OPTIONS] -- COMMAND [ARGS...]",
@@ -79,17 +190,31 @@ Each retry attempt increases the delay by the specified multiplier.`,
 				return fmt.Errorf("no command specified after '--'")
 			}
 
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			if err := strategyConfig.Validate(); err != nil {
+				return err
+			}
+
 			// Store parsed config and command for testing
-			lastExponentialConfig = config
+			lastExponentialConfig = strategyConfig
 			lastParsedCommand = args
 
 			// Create strategy and execute
-			return executeWithExponential(config, args)
+			return executeWithExponential(strategyConfig, commonConfig, args)
 		},
-	} // Add flags
-	cmd.Flags().DurationVarP(&config.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
-	cmd.Flags().Float64VarP(&config.Multiplier, "multiplier", "x", 2.0, "Multiplier")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+	}
+
+	// Add strategy-specific flags
+	cmd.Flags().DurationVarP(&strategyConfig.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
+	cmd.Flags().Float64VarP(&strategyConfig.Multiplier, "multiplier", "x", 2.0, "Multiplier")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
@@ -108,38 +233,131 @@ func parseCommandArgs(args []string) ([]string, error) {
 }
 
 // executeWithHTTPAware executes command with HTTP-aware strategy
-func executeWithHTTPAware(config HTTPAwareConfig, commandArgs []string) error {
+func executeWithHTTPAware(strategyConfig HTTPAwareConfig, commonConfig CommonConfig, commandArgs []string) error {
 	// Create fallback strategy
-	var fallbackStrategy backoff.Strategy
-	switch config.Fallback {
-	case "exponential", "exp":
-		fallbackStrategy = backoff.NewExponential(1*time.Second, 2.0, 60*time.Second)
-	case "linear":
-		fallbackStrategy = backoff.NewLinear(1*time.Second, 60*time.Second)
-	case "fixed":
-		fallbackStrategy = backoff.NewFixed(1 * time.Second)
-	default:
-		fallbackStrategy = backoff.NewExponential(1*time.Second, 2.0, 60*time.Second)
+	fallbackStrategy, err := createFallbackStrategy(strategyConfig.Fallback)
+	if err != nil {
+		return fmt.Errorf("failed to create fallback strategy: %w", err)
 	}
 
 	// Create HTTP-aware strategy
-	strategy := backoff.NewHTTPAware(fallbackStrategy, config.MaxDelay)
+	strategy := backoff.NewHTTPAware(fallbackStrategy, strategyConfig.MaxDelay)
 
-	// For now, just return nil (will be implemented in integration phase)
-	_ = strategy
-	_ = commandArgs
-	return nil
+	// Create executor
+	exec, err := createExecutorFromConfig(strategy, commonConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Execute command
+	result, err := exec.Run(commandArgs)
+	if err != nil {
+		return fmt.Errorf("execution error: %w", err)
+	}
+
+	// Handle results
+	return handleExecutionResult(result, exec)
 }
 
 // executeWithExponential executes command with exponential strategy
-func executeWithExponential(config ExponentialConfig, commandArgs []string) error {
+func executeWithExponential(strategyConfig ExponentialConfig, commonConfig CommonConfig, commandArgs []string) error {
 	// Create exponential strategy
-	strategy := backoff.NewExponential(config.BaseDelay, config.Multiplier, config.MaxDelay)
+	strategy := backoff.NewExponential(strategyConfig.BaseDelay, strategyConfig.Multiplier, strategyConfig.MaxDelay)
 
-	// For now, just return nil (will be implemented in integration phase)
-	_ = strategy
-	_ = commandArgs
-	return nil
+	// Create executor
+	exec, err := createExecutorFromConfig(strategy, commonConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Execute command
+	result, err := exec.Run(commandArgs)
+	if err != nil {
+		return fmt.Errorf("execution error: %w", err)
+	}
+
+	// Handle results
+	return handleExecutionResult(result, exec)
+}
+
+// createExecutorFromConfig creates an executor from strategy and common configuration
+func createExecutorFromConfig(strategy backoff.Strategy, config CommonConfig) (*executor.Executor, error) {
+	// Create base executor with strategy and timeout
+	var exec *executor.Executor
+
+	if strategy != nil && config.Timeout > 0 {
+		exec = executor.NewExecutorWithBackoffAndTimeout(config.Attempts, strategy, config.Timeout)
+	} else if strategy != nil {
+		exec = executor.NewExecutorWithBackoff(config.Attempts, strategy)
+	} else if config.Timeout > 0 {
+		exec = executor.NewExecutorWithTimeout(config.Attempts, config.Timeout)
+	} else {
+		exec = executor.NewExecutor(config.Attempts)
+	}
+
+	// Add condition checker if patterns specified
+	if config.SuccessPattern != "" || config.FailurePattern != "" {
+		checker, err := conditions.NewChecker(config.SuccessPattern, config.FailurePattern, config.CaseInsensitive)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create condition checker: %w", err)
+		}
+		exec.Conditions = checker
+	}
+
+	// Add status reporter
+	reporter := ui.NewReporter(os.Stderr)
+	exec.Reporter = reporter
+
+	return exec, nil
+}
+
+// handleExecutionResult handles the result of command execution
+func handleExecutionResult(result *executor.Result, exec *executor.Executor) error {
+	// Show final summary if we have statistics
+	if result.Stats != nil && exec.Reporter != nil {
+		exec.Reporter.FinalSummary(result.Stats)
+	}
+
+	// Send metrics to daemon asynchronously (fire-and-forget)
+	if result.Metrics != nil {
+		metricsClient := metrics.NewClient(metrics.DefaultSocketPath())
+		metricsClient.SendMetricsAsync(result.Metrics)
+	}
+
+	// Exit with appropriate code based on success
+	if result.Success {
+		os.Exit(0)
+	} else {
+		// If failure was due to pattern matching, use exit code 1
+		// Otherwise use the original exit code
+		if strings.Contains(result.Reason, "failure pattern matched") {
+			os.Exit(1)
+		} else {
+			os.Exit(result.ExitCode)
+		}
+	}
+
+	return nil // This line won't be reached due to os.Exit
+}
+
+// createFallbackStrategy creates a fallback strategy from the given type
+func createFallbackStrategy(fallbackType string) (backoff.Strategy, error) {
+	switch fallbackType {
+	case "exponential", "exp":
+		return backoff.NewExponential(1*time.Second, 2.0, 60*time.Second), nil
+	case "linear", "lin":
+		return backoff.NewLinear(1*time.Second, 60*time.Second), nil
+	case "fixed", "fix":
+		return backoff.NewFixed(1 * time.Second), nil
+	case "jitter", "jit":
+		return backoff.NewJitter(1*time.Second, 2.0, 60*time.Second), nil
+	case "decorrelated-jitter", "dj":
+		return backoff.NewDecorrelatedJitter(1*time.Second, 2.0, 60*time.Second), nil
+	case "fibonacci", "fib":
+		return backoff.NewFibonacci(1*time.Second, 60*time.Second), nil
+	default:
+		return nil, fmt.Errorf("unknown fallback strategy: %s", fallbackType)
+	}
 }
 
 // Test helper functions
@@ -254,7 +472,8 @@ type FibonacciConfig struct {
 
 // createLinearCommand creates the linear subcommand
 func createLinearCommand() *cobra.Command {
-	var config LinearConfig
+	var strategyConfig LinearConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "linear [OPTIONS] -- COMMAND [ARGS...]",
@@ -267,20 +486,29 @@ func createLinearCommand() *cobra.Command {
 				return fmt.Errorf("no command specified after '--'")
 			}
 
-			strategy := backoff.NewLinear(config.Increment, config.MaxDelay)
-			return executeWithStrategy(strategy, args)
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			strategy := backoff.NewLinear(strategyConfig.Increment, strategyConfig.MaxDelay)
+			return executeWithStrategy(strategy, commonConfig, args)
 		},
 	}
 
-	cmd.Flags().DurationVarP(&config.Increment, "increment", "i", 1*time.Second, "Delay increment")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+	cmd.Flags().DurationVarP(&strategyConfig.Increment, "increment", "i", 1*time.Second, "Delay increment")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // createFixedCommand creates the fixed subcommand
 func createFixedCommand() *cobra.Command {
-	var config FixedConfig
+	var strategyConfig FixedConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "fixed [OPTIONS] -- COMMAND [ARGS...]",
@@ -293,19 +521,28 @@ func createFixedCommand() *cobra.Command {
 				return fmt.Errorf("no command specified after '--'")
 			}
 
-			strategy := backoff.NewFixed(config.Delay)
-			return executeWithStrategy(strategy, args)
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			strategy := backoff.NewFixed(strategyConfig.Delay)
+			return executeWithStrategy(strategy, commonConfig, args)
 		},
 	}
 
-	cmd.Flags().DurationVarP(&config.Delay, "delay", "d", 1*time.Second, "Fixed delay")
+	cmd.Flags().DurationVarP(&strategyConfig.Delay, "delay", "d", 1*time.Second, "Fixed delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // createJitterCommand creates the jitter subcommand
 func createJitterCommand() *cobra.Command {
-	var config JitterConfig
+	var strategyConfig JitterConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "jitter [OPTIONS] -- COMMAND [ARGS...]",
@@ -318,21 +555,30 @@ func createJitterCommand() *cobra.Command {
 				return fmt.Errorf("no command specified after '--'")
 			}
 
-			strategy := backoff.NewJitter(config.BaseDelay, config.Multiplier, config.MaxDelay)
-			return executeWithStrategy(strategy, args)
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			strategy := backoff.NewJitter(strategyConfig.BaseDelay, strategyConfig.Multiplier, strategyConfig.MaxDelay)
+			return executeWithStrategy(strategy, commonConfig, args)
 		},
 	}
 
-	cmd.Flags().DurationVarP(&config.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
-	cmd.Flags().Float64VarP(&config.Multiplier, "multiplier", "x", 2.0, "Multiplier")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+	cmd.Flags().DurationVarP(&strategyConfig.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
+	cmd.Flags().Float64VarP(&strategyConfig.Multiplier, "multiplier", "x", 2.0, "Multiplier")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // createDecorrelatedJitterCommand creates the decorrelated-jitter subcommand
 func createDecorrelatedJitterCommand() *cobra.Command {
-	var config DecorrelatedJitterConfig
+	var strategyConfig DecorrelatedJitterConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "decorrelated-jitter [OPTIONS] -- COMMAND [ARGS...]",
@@ -345,21 +591,30 @@ func createDecorrelatedJitterCommand() *cobra.Command {
 				return fmt.Errorf("no command specified after '--'")
 			}
 
-			strategy := backoff.NewDecorrelatedJitter(config.BaseDelay, config.Multiplier, config.MaxDelay)
-			return executeWithStrategy(strategy, args)
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			strategy := backoff.NewDecorrelatedJitter(strategyConfig.BaseDelay, strategyConfig.Multiplier, strategyConfig.MaxDelay)
+			return executeWithStrategy(strategy, commonConfig, args)
 		},
 	}
 
-	cmd.Flags().DurationVarP(&config.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
-	cmd.Flags().Float64VarP(&config.Multiplier, "multiplier", "x", 2.0, "Multiplier")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+	cmd.Flags().DurationVarP(&strategyConfig.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
+	cmd.Flags().Float64VarP(&strategyConfig.Multiplier, "multiplier", "x", 2.0, "Multiplier")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // createFibonacciCommand creates the fibonacci subcommand
 func createFibonacciCommand() *cobra.Command {
-	var config FibonacciConfig
+	var strategyConfig FibonacciConfig
+	var commonConfig CommonConfig = NewCommonConfig()
 
 	cmd := &cobra.Command{
 		Use:     "fibonacci [OPTIONS] -- COMMAND [ARGS...]",
@@ -372,21 +627,39 @@ func createFibonacciCommand() *cobra.Command {
 				return fmt.Errorf("no command specified after '--'")
 			}
 
-			strategy := backoff.NewFibonacci(config.BaseDelay, config.MaxDelay)
-			return executeWithStrategy(strategy, args)
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			strategy := backoff.NewFibonacci(strategyConfig.BaseDelay, strategyConfig.MaxDelay)
+			return executeWithStrategy(strategy, commonConfig, args)
 		},
 	}
 
-	cmd.Flags().DurationVarP(&config.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
-	cmd.Flags().DurationVarP(&config.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+	cmd.Flags().DurationVarP(&strategyConfig.BaseDelay, "base-delay", "b", 1*time.Second, "Base delay")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", 60*time.Second, "Maximum delay")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
 }
 
 // executeWithStrategy executes command with the given strategy
-func executeWithStrategy(strategy backoff.Strategy, commandArgs []string) error {
-	// For now, just return nil (will be fully implemented with executor integration)
-	_ = strategy
-	_ = commandArgs
-	return nil
+func executeWithStrategy(strategy backoff.Strategy, commonConfig CommonConfig, commandArgs []string) error {
+	// Create executor
+	exec, err := createExecutorFromConfig(strategy, commonConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Execute command
+	result, err := exec.Run(commandArgs)
+	if err != nil {
+		return fmt.Errorf("execution error: %w", err)
+	}
+
+	// Handle results
+	return handleExecutionResult(result, exec)
 }
