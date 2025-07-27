@@ -20,6 +20,7 @@ var (
 	lastHTTPAwareConfig   HTTPAwareConfig
 	lastExponentialConfig ExponentialConfig
 	lastParsedCommand     []string
+	testMode              bool // Set to true during tests to avoid os.Exit()
 )
 
 // CommonConfig holds configuration options common to all strategies
@@ -324,20 +325,27 @@ func handleExecutionResult(result *executor.Result, exec *executor.Executor) err
 		metricsClient.SendMetricsAsync(result.Metrics)
 	}
 
-	// Exit with appropriate code based on success
-	if result.Success {
-		os.Exit(0)
-	} else {
-		// If failure was due to pattern matching, use exit code 1
-		// Otherwise use the original exit code
-		if strings.Contains(result.Reason, "failure pattern matched") {
-			os.Exit(1)
+	// Exit with appropriate code based on success (skip during tests)
+	if !testMode {
+		if result.Success {
+			os.Exit(0)
 		} else {
-			os.Exit(result.ExitCode)
+			// If failure was due to pattern matching, use exit code 1
+			// Otherwise use the original exit code
+			if strings.Contains(result.Reason, "failure pattern matched") {
+				os.Exit(1)
+			} else {
+				os.Exit(result.ExitCode)
+			}
 		}
 	}
 
-	return nil // This line won't be reached due to os.Exit
+	// Return error for test mode to indicate failure
+	if !result.Success {
+		return fmt.Errorf("command failed: %s", result.Reason)
+	}
+
+	return nil
 }
 
 // createFallbackStrategy creates a fallback strategy from the given type
@@ -375,14 +383,24 @@ func getLastParsedCommand() []string {
 
 // createTestRootCommand creates a root command for testing
 func createTestRootCommand() *cobra.Command {
+	// Enable test mode to avoid os.Exit() calls
+	testMode = true
+
 	rootCmd := &cobra.Command{
 		Use:   "patience",
 		Short: "Intelligent retry wrapper with adaptive backoff strategies",
 	}
 
-	// Add subcommands
+	// Add subcommands - ALL strategies must be registered for tests
 	rootCmd.AddCommand(createHTTPAwareCommand())
 	rootCmd.AddCommand(createExponentialCommand())
+	rootCmd.AddCommand(createFixedCommand())
+	rootCmd.AddCommand(createLinearCommand())
+	rootCmd.AddCommand(createJitterCommand())
+	rootCmd.AddCommand(createDecorrelatedJitterCommand())
+	rootCmd.AddCommand(createFibonacciCommand())
+	rootCmd.AddCommand(createPolynomialCommand())
+	rootCmd.AddCommand(createAdaptiveCommand())
 
 	return rootCmd
 }

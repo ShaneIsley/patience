@@ -290,6 +290,11 @@ func (e *TestExecutor) Run(command []string) (*TestResult, error) {
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
 		output := e.Runner.getNextOutput()
 
+		// Process command output for HTTP-aware strategies
+		if httpAware, ok := e.BackoffStrategy.(*HTTPAware); ok {
+			httpAware.ProcessCommandOutput(output.Stdout, output.Stderr, output.ExitCode)
+		}
+
 		// Check if command succeeded
 		if output.ExitCode == 0 {
 			return &TestResult{
