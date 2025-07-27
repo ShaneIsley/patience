@@ -51,6 +51,15 @@ func (h *HTTPAware) ProcessCommandOutput(stdout, stderr string, exitCode int) {
 	// Reset previous timing
 	h.lastRetryAfter = 0
 
+	// Memory optimization: Limit processing to first 10KB of output to prevent memory issues
+	const maxProcessingSize = 10 * 1024
+	if len(stdout) > maxProcessingSize {
+		stdout = stdout[:maxProcessingSize]
+	}
+	if len(stderr) > maxProcessingSize {
+		stderr = stderr[:maxProcessingSize]
+	}
+
 	// Check both stdout and stderr for HTTP responses
 	output := stdout + "\n" + stderr
 

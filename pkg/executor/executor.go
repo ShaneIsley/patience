@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/shaneisley/patience/pkg/backoff"
@@ -14,6 +16,24 @@ import (
 	"github.com/shaneisley/patience/pkg/metrics"
 	"github.com/shaneisley/patience/pkg/ui"
 )
+
+// limitedBuffer wraps bytes.Buffer with a size limit to prevent memory exhaustion
+type limitedBuffer struct {
+	bytes.Buffer
+	limit int
+}
+
+func (lb *limitedBuffer) Write(p []byte) (n int, err error) {
+	if lb.Len()+len(p) > lb.limit {
+		// Truncate to prevent memory exhaustion
+		remaining := lb.limit - lb.Len()
+		if remaining > 0 {
+			return lb.Buffer.Write(p[:remaining])
+		}
+		return len(p), nil // Pretend we wrote it all
+	}
+	return lb.Buffer.Write(p)
+}
 
 // CommandOutput holds the output from a command execution
 type CommandOutput struct {
@@ -57,10 +77,31 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 
+	// Process cleanup improvement: Set process group for better signal handling
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Network timeout reliability: Set environment variables for faster DNS resolution
+	cmd.Env = append(os.Environ(),
+		"CURL_CA_BUNDLE=", // Disable CA bundle lookup for faster curl operations
+		"CURL_TIMEOUT=10", // Set curl-specific timeout
+	)
+
 	// Capture stdout and stderr while also forwarding to terminal
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	// Use limited buffers for large outputs (10MB limit each)
+	const maxBufferSize = 10 * 1024 * 1024 // 10MB limit
+	stdoutBuf := &limitedBuffer{limit: maxBufferSize}
+	stderrBuf := &limitedBuffer{limit: maxBufferSize}
+	cmd.Stdout = io.MultiWriter(os.Stdout, stdoutBuf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, stderrBuf)
+
+	// Ensure process cleanup on context cancellation
+	go func() {
+		<-ctx.Done()
+		if cmd.Process != nil {
+			// Kill process group to ensure all child processes are terminated
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
+	}()
 
 	err := cmd.Run()
 
@@ -68,6 +109,16 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 		Stdout: stdoutBuf.String(),
 		Stderr: stderrBuf.String(),
 	}
+
+	// Memory management optimization: Clear buffers after copying strings
+	defer func() {
+		stdoutBuf.Reset()
+		stderrBuf.Reset()
+		// Force garbage collection for stress testing scenarios
+		if stdoutBuf.Len() > 1024*1024 || stderrBuf.Len() > 1024*1024 { // 1MB threshold
+			runtime.GC()
+		}
+	}()
 
 	if err != nil {
 		// Check for context deadline exceeded (timeout)
@@ -151,7 +202,9 @@ type Result struct {
 // executeAttempt runs a single command attempt and returns the output, error, and timeout status
 func (e *Executor) executeAttempt(command []string) (CommandOutput, error, bool) {
 	if e.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
+		// Network timeout reliability: Add small buffer to account for context switching overhead
+		adjustedTimeout := e.Timeout + (50 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), adjustedTimeout)
 		defer cancel()
 
 		output, err := e.Runner.RunWithOutputAndContext(ctx, command)

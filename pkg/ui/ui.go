@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -52,14 +53,27 @@ func (r *Reporter) AttemptFailure(attempt, maxAttempts int, reason string, nextD
 		return
 	}
 
+	// High-frequency optimization: Use string builder for efficient string operations
+	var builder strings.Builder
+	builder.WriteString("[retry] Attempt ")
+	builder.WriteString(strconv.Itoa(attempt))
+	builder.WriteByte('/')
+	builder.WriteString(strconv.Itoa(maxAttempts))
+	builder.WriteString(" failed (")
+	builder.WriteString(reason)
+	builder.WriteString(")")
+
 	if attempt == maxAttempts {
 		// Last attempt, no retry
-		fmt.Fprintf(r.writer, "[retry] Attempt %d/%d failed (%s).\n", attempt, maxAttempts, reason)
+		builder.WriteString(".\n")
 	} else {
 		// Will retry
-		fmt.Fprintf(r.writer, "[retry] Attempt %d/%d failed (%s). Retrying in %s.\n",
-			attempt, maxAttempts, reason, r.formatDuration(nextDelay))
+		builder.WriteString(". Retrying in ")
+		builder.WriteString(r.formatDuration(nextDelay))
+		builder.WriteString(".\n")
 	}
+
+	fmt.Fprint(r.writer, builder.String())
 }
 
 // FinalSummary reports the final outcome and statistics
