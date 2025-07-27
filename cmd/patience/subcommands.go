@@ -470,6 +470,21 @@ type FibonacciConfig struct {
 	MaxDelay  time.Duration
 }
 
+// PolynomialConfig holds configuration for polynomial backoff strategy
+type PolynomialConfig struct {
+	BaseDelay time.Duration
+	Exponent  float64
+	MaxDelay  time.Duration
+}
+
+// AdaptiveConfig holds configuration for adaptive backoff strategy
+type AdaptiveConfig struct {
+	LearningRate     float64
+	MemoryWindow     int
+	FallbackStrategy string
+	FallbackConfig   interface{}
+}
+
 // createLinearCommand creates the linear subcommand
 func createLinearCommand() *cobra.Command {
 	var strategyConfig LinearConfig
@@ -662,4 +677,186 @@ func executeWithStrategy(strategy backoff.Strategy, commonConfig CommonConfig, c
 
 	// Handle results
 	return handleExecutionResult(result, exec)
+}
+
+// createPolynomialCommand creates the polynomial subcommand
+func createPolynomialCommand() *cobra.Command {
+	var strategyConfig PolynomialConfig
+	var commonConfig CommonConfig = NewCommonConfig()
+
+	cmd := &cobra.Command{
+		Use:     "polynomial [OPTIONS] -- COMMAND [ARGS...]",
+		Aliases: []string{"poly"},
+		Short:   "Polynomial backoff strategy with configurable growth rate",
+		Long: `Polynomial backoff strategy uses the formula: delay = base_delay * (attempt ^ exponent)
+
+The exponent parameter controls the growth rate:
+- exponent < 1.0: Sublinear growth (gentle increase)
+- exponent = 1.0: Linear growth (same as linear strategy)  
+- exponent = 1.5: Moderate growth (balanced approach)
+- exponent = 2.0: Quadratic growth (rapid increase)
+- exponent > 2.0: Aggressive growth (approaches exponential)
+
+Examples:
+  # Quadratic backoff for database connections
+  patience polynomial --base-delay 500ms --exponent 2.0 --max-delay 30s -- psql -h db.example.com
+  
+  # Moderate growth for API calls
+  patience poly -b 1s -e 1.5 -m 60s -- curl https://api.example.com
+  
+  # Gentle sublinear growth for frequent operations
+  patience polynomial --exponent 0.8 -- frequent-operation`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("no command specified after '--'")
+			}
+
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			// Validate polynomial-specific configuration
+			if strategyConfig.BaseDelay <= 0 {
+				return fmt.Errorf("base delay must be positive")
+			}
+			if strategyConfig.Exponent < 0 {
+				return fmt.Errorf("exponent must be non-negative")
+			}
+			if strategyConfig.MaxDelay <= 0 {
+				return fmt.Errorf("max delay must be positive")
+			}
+			if strategyConfig.BaseDelay > strategyConfig.MaxDelay {
+				return fmt.Errorf("base delay cannot be greater than max delay")
+			}
+
+			// Create strategy
+			strategy, err := backoff.NewPolynomial(strategyConfig.BaseDelay, strategyConfig.Exponent, strategyConfig.MaxDelay)
+			if err != nil {
+				return fmt.Errorf("failed to create polynomial strategy: %w", err)
+			}
+
+			return executeWithStrategy(strategy, commonConfig, args)
+		},
+	}
+
+	// Set default values
+	strategyConfig.BaseDelay = 1 * time.Second
+	strategyConfig.Exponent = 2.0
+	strategyConfig.MaxDelay = 60 * time.Second
+
+	// Add strategy-specific flags
+	cmd.Flags().DurationVarP(&strategyConfig.BaseDelay, "base-delay", "b", strategyConfig.BaseDelay,
+		"Base delay for polynomial calculation")
+	cmd.Flags().Float64VarP(&strategyConfig.Exponent, "exponent", "e", strategyConfig.Exponent,
+		"Polynomial exponent (controls growth rate)")
+	cmd.Flags().DurationVarP(&strategyConfig.MaxDelay, "max-delay", "m", strategyConfig.MaxDelay,
+		"Maximum delay cap")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
+
+	return cmd
+}
+
+// createAdaptiveCommand creates the adaptive subcommand
+func createAdaptiveCommand() *cobra.Command {
+	var strategyConfig AdaptiveConfig
+	var commonConfig CommonConfig = NewCommonConfig()
+
+	cmd := &cobra.Command{
+		Use:     "adaptive [OPTIONS] -- COMMAND [ARGS...]",
+		Aliases: []string{"adapt"},
+		Short:   "Machine learning-inspired adaptive backoff strategy",
+		Long: `Adaptive backoff strategy learns from success/failure patterns to optimize retry timing.
+
+The strategy tracks outcomes and adjusts delays based on what works best for your specific command.
+It uses a fallback strategy when insufficient learning data is available.
+
+Key parameters:
+- learning-rate: How quickly to adapt (0.01-1.0, default 0.1)
+- memory-window: Number of recent outcomes to remember (5-10000, default 50)
+- fallback: Strategy to use when learning data is insufficient
+
+Examples:
+  # Basic adaptive with exponential fallback
+  patience adaptive --learning-rate 0.1 --memory-window 50 -- curl https://api.example.com
+  
+  # Fast learning for rapidly changing conditions
+  patience adapt --learning-rate 0.5 --fallback fixed -- flaky-command
+  
+  # Conservative learning with large memory
+  patience adaptive -r 0.05 -w 200 --fallback linear -- database-operation`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("no command specified after '--'")
+			}
+
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			// Validate adaptive-specific configuration
+			if strategyConfig.LearningRate <= 0 || strategyConfig.LearningRate > 1.0 {
+				return fmt.Errorf("learning rate must be between 0.01 and 1.0, got %f", strategyConfig.LearningRate)
+			}
+			if strategyConfig.MemoryWindow <= 0 || strategyConfig.MemoryWindow > 10000 {
+				return fmt.Errorf("memory window must be between 1 and 10000, got %d", strategyConfig.MemoryWindow)
+			}
+
+			// Create fallback strategy
+			var fallbackStrategy backoff.Strategy
+			switch strategyConfig.FallbackStrategy {
+			case "exponential", "exp":
+				fallbackStrategy = backoff.NewExponential(1*time.Second, 2.0, 60*time.Second)
+			case "linear", "lin":
+				fallbackStrategy = backoff.NewLinear(1*time.Second, 60*time.Second)
+			case "fixed", "fix":
+				fallbackStrategy = backoff.NewFixed(1 * time.Second)
+			case "jitter", "jit":
+				fallbackStrategy = backoff.NewJitter(1*time.Second, 2.0, 60*time.Second)
+			case "decorrelated-jitter", "dj":
+				fallbackStrategy = backoff.NewDecorrelatedJitter(1*time.Second, 2.0, 60*time.Second)
+			case "fibonacci", "fib":
+				fallbackStrategy = backoff.NewFibonacci(1*time.Second, 60*time.Second)
+			case "polynomial", "poly":
+				poly, err := backoff.NewPolynomial(1*time.Second, 2.0, 60*time.Second)
+				if err != nil {
+					return fmt.Errorf("failed to create polynomial fallback: %w", err)
+				}
+				fallbackStrategy = poly
+			default:
+				fallbackStrategy = backoff.NewExponential(1*time.Second, 2.0, 60*time.Second)
+			}
+
+			// Create adaptive strategy
+			strategy, err := backoff.NewAdaptive(fallbackStrategy, strategyConfig.LearningRate, strategyConfig.MemoryWindow)
+			if err != nil {
+				return fmt.Errorf("failed to create adaptive strategy: %w", err)
+			}
+
+			return executeWithStrategy(strategy, commonConfig, args)
+		},
+	}
+
+	// Set default values
+	strategyConfig.LearningRate = 0.1
+	strategyConfig.MemoryWindow = 50
+	strategyConfig.FallbackStrategy = "exponential"
+
+	// Add strategy-specific flags
+	cmd.Flags().Float64VarP(&strategyConfig.LearningRate, "learning-rate", "r", strategyConfig.LearningRate,
+		"Learning rate for adaptation (0.01-1.0)")
+	cmd.Flags().IntVarP(&strategyConfig.MemoryWindow, "memory-window", "w", strategyConfig.MemoryWindow,
+		"Number of recent outcomes to remember (5-10000)")
+	cmd.Flags().StringVarP(&strategyConfig.FallbackStrategy, "fallback", "f", strategyConfig.FallbackStrategy,
+		"Fallback strategy (exponential, linear, fixed, jitter, decorrelated-jitter, fibonacci, polynomial)")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
+
+	return cmd
 }

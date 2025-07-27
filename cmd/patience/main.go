@@ -149,6 +149,8 @@ func init() {
 	rootCmd.AddCommand(createJitterCommand())
 	rootCmd.AddCommand(createDecorrelatedJitterCommand())
 	rootCmd.AddCommand(createFibonacciCommand())
+	rootCmd.AddCommand(createPolynomialCommand())
+	rootCmd.AddCommand(createAdaptiveCommand())
 }
 
 // loadConfiguration loads configuration with full precedence support
