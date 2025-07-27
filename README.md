@@ -263,7 +263,7 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--attempts` | `-a` | `3` | Maximum number of attempts (1-1000) |
-| `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`) |
+| `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`). Note: ~10-20ms overhead |
 | `--success-pattern` | | | Regex pattern indicating success in stdout/stderr |
 | `--failure-pattern` | | | Regex pattern indicating failure in stdout/stderr |
 | `--case-insensitive` | | `false` | Make pattern matching case-insensitive |
