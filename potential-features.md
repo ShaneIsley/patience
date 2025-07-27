@@ -7,10 +7,24 @@ This document outlines potential enhancements and features that could be added t
 ### Backoff Strategies (Implemented)
 The following backoff strategies have been fully implemented and tested:
 
-- ✅ **Jitter Strategy:** Full jitter backoff implemented to prevent thundering herd issues when multiple instances retry simultaneously.
+- ✅ **HTTP-Aware Strategy:** Intelligent HTTP response parsing that respects Retry-After headers and JSON retry fields for optimal server-directed timing.
+- ✅ **Exponential Strategy:** Industry-standard exponential backoff with configurable base delay, multiplier, and maximum delay caps.
 - ✅ **Linear Strategy:** Simple, linear backoff option (1s, 2s, 3s, etc.) for predictable, incremental delays.
+- ✅ **Fixed Strategy:** Constant delay between retries for simple, predictable timing.
+- ✅ **Jitter Strategy:** Full jitter backoff implemented to prevent thundering herd issues when multiple instances retry simultaneously.
 - ✅ **Decorrelated Jitter Strategy:** Advanced AWS-recommended jitter strategy that combines exponential backoff with smart randomization for distributed systems.
 - ✅ **Fibonacci Strategy:** Fibonacci sequence-based backoff (1s, 1s, 2s, 3s, 5s, 8s, etc.) as a less aggressive alternative to exponential backoff.
+- ✅ **Polynomial Strategy:** Configurable polynomial growth with customizable exponent for fine-tuned delay patterns (sublinear, linear, quadratic, etc.).
+- ✅ **Adaptive Strategy:** Machine learning-inspired strategy that learns from success/failure patterns to optimize retry timing over time.
+
+### Configuration System (Implemented)
+The following configuration features have been fully implemented:
+
+- ✅ **Configuration Files:** TOML-based configuration with auto-discovery (.patience.toml, patience.toml).
+- ✅ **Environment Variables:** Full support for PATIENCE_* environment variables.
+- ✅ **Configuration Precedence:** CLI flags > environment variables > config file > defaults.
+- ✅ **Debug Configuration:** --debug-config flag to show configuration resolution sources.
+- ✅ **Validation:** Comprehensive configuration validation with clear error messages.
 
 ## High Priority Features
 

@@ -57,11 +57,11 @@ sudo ./scripts/install.sh
 5. **Create user and group**:
    ```bash
    # Linux
-   sudo useradd --system --home-dir /usr/local/var/lib/patience retry
+   sudo useradd --system --home-dir /usr/local/var/lib/patience patience
    
    # macOS
-   sudo dscl . -create /Users/_retry
-   sudo dscl . -create /Users/_retry UserShell /usr/bin/false
+   sudo dscl . -create /Users/_patience
+   sudo dscl . -create /Users/_patience UserShell /usr/bin/false
    ```
 
 ## Configuration
@@ -100,14 +100,14 @@ Create a configuration file at `/usr/local/etc/patience/daemon.json`:
 
 Configuration can also be set via environment variables:
 
-- `RETRY_SOCKET_PATH`
-- `RETRY_HTTP_PORT`
-- `RETRY_MAX_METRICS`
-- `RETRY_METRICS_MAX_AGE`
-- `RETRY_LOG_LEVEL`
-- `RETRY_PID_FILE`
-- `RETRY_ENABLE_HTTP`
-- `RETRY_ENABLE_PROFILING`
+- `PATIENCE_SOCKET_PATH`
+- `PATIENCE_HTTP_PORT`
+- `PATIENCE_MAX_METRICS`
+- `PATIENCE_METRICS_MAX_AGE`
+- `PATIENCE_LOG_LEVEL`
+- `PATIENCE_PID_FILE`
+- `PATIENCE_ENABLE_HTTP`
+- `PATIENCE_ENABLE_PROFILING`
 
 ## Usage
 
@@ -147,7 +147,7 @@ sudo launchctl load /Library/LaunchDaemons/com.patience.daemon.plist
 sudo launchctl start com.patience.daemon
 
 # Check status
-sudo launchctl list | grep retry
+sudo launchctl list | grep patience
 
 # View logs
 tail -f /usr/local/var/log/patience/daemon.log
@@ -261,13 +261,13 @@ The dashboard provides:
 - **Recent Operations**: Latest patience operations with status
 - **Real-time Updates**: Auto-refresh every 30 seconds
 
-## Integration with Retry CLI
+## Integration with patience CLI
 
 The patience CLI automatically sends metrics to the daemon when available. No additional configuration is required - the CLI will attempt to connect to the daemon socket and gracefully continue if the daemon is not running.
 
 ### Metrics Sent
 
-For each retry operation, the following metrics are sent:
+For each patience operation, the following metrics are sent:
 
 - Command executed
 - Final status (succeeded/failed)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/shaneisley/patience/pkg/backoff"
 	"github.com/shaneisley/patience/pkg/conditions"
+	"github.com/shaneisley/patience/pkg/config"
 	"github.com/shaneisley/patience/pkg/executor"
 	"github.com/shaneisley/patience/pkg/metrics"
 	"github.com/shaneisley/patience/pkg/ui"
@@ -30,6 +31,8 @@ type CommonConfig struct {
 	SuccessPattern  string        `json:"success_pattern"`
 	FailurePattern  string        `json:"failure_pattern"`
 	CaseInsensitive bool          `json:"case_insensitive"`
+	ConfigFile      string        `json:"-"` // Config file path (not serialized)
+	DebugConfig     bool          `json:"-"` // Debug config flag (not serialized)
 }
 
 // Validate validates the common configuration
@@ -122,6 +125,8 @@ func addCommonFlags(cmd *cobra.Command, config *CommonConfig) {
 	cmd.Flags().StringVar(&config.SuccessPattern, "success-pattern", "", "Regex pattern for success detection")
 	cmd.Flags().StringVar(&config.FailurePattern, "failure-pattern", "", "Regex pattern for failure detection")
 	cmd.Flags().BoolVar(&config.CaseInsensitive, "case-insensitive", false, "Case-insensitive pattern matching")
+	cmd.Flags().StringVar(&config.ConfigFile, "config", "", "Configuration file path")
+	cmd.Flags().BoolVar(&config.DebugConfig, "debug-config", false, "Show configuration debug information")
 }
 
 // createHTTPAwareCommand creates the http-aware subcommand
@@ -144,6 +149,19 @@ Falls back to specified strategy when no HTTP information is available.`,
 			if len(args) == 0 {
 				return fmt.Errorf("no command specified after '--'")
 			}
+
+			// Load configuration with precedence (file, env, flags)
+			cfg, err := loadConfigWithPrecedence(cmd, &commonConfig)
+			if err != nil {
+				return err
+			}
+
+			// Update common config from loaded configuration
+			commonConfig.Attempts = cfg.Attempts
+			commonConfig.Timeout = cfg.Timeout
+			commonConfig.SuccessPattern = cfg.SuccessPattern
+			commonConfig.FailurePattern = cfg.FailurePattern
+			commonConfig.CaseInsensitive = cfg.CaseInsensitive
 
 			// Validate configurations
 			if err := commonConfig.Validate(); err != nil {
@@ -190,6 +208,19 @@ Each retry attempt increases the delay by the specified multiplier.`,
 			if len(args) == 0 {
 				return fmt.Errorf("no command specified after '--'")
 			}
+
+			// Load configuration with precedence (file, env, flags)
+			cfg, err := loadConfigWithPrecedence(cmd, &commonConfig)
+			if err != nil {
+				return err
+			}
+
+			// Update common config from loaded configuration
+			commonConfig.Attempts = cfg.Attempts
+			commonConfig.Timeout = cfg.Timeout
+			commonConfig.SuccessPattern = cfg.SuccessPattern
+			commonConfig.FailurePattern = cfg.FailurePattern
+			commonConfig.CaseInsensitive = cfg.CaseInsensitive
 
 			// Validate configurations
 			if err := commonConfig.Validate(); err != nil {
@@ -279,6 +310,61 @@ func executeWithExponential(strategyConfig ExponentialConfig, commonConfig Commo
 
 	// Handle results
 	return handleExecutionResult(result, exec)
+}
+
+// loadConfigWithPrecedence loads configuration from file, environment, and CLI flags
+func loadConfigWithPrecedence(cmd *cobra.Command, commonConfig *CommonConfig) (*config.Config, error) {
+	// Determine config file path
+	configPath := commonConfig.ConfigFile
+	if configPath == "" {
+		// Auto-discover config file
+		if cwd, err := os.Getwd(); err == nil {
+			if found := config.FindConfigFile(cwd); found != "" {
+				configPath = found
+			}
+		}
+	}
+
+	// Create flag config from common config
+	flagConfig := &config.Config{
+		Attempts:        commonConfig.Attempts,
+		Timeout:         commonConfig.Timeout,
+		SuccessPattern:  commonConfig.SuccessPattern,
+		FailurePattern:  commonConfig.FailurePattern,
+		CaseInsensitive: commonConfig.CaseInsensitive,
+	}
+
+	// Track which flags were explicitly set
+	explicitFields := make(map[string]bool)
+	if cmd.Flags().Changed("attempts") {
+		explicitFields["attempts"] = true
+	}
+	if cmd.Flags().Changed("timeout") {
+		explicitFields["timeout"] = true
+	}
+	if cmd.Flags().Changed("success-pattern") {
+		explicitFields["success_pattern"] = true
+	}
+	if cmd.Flags().Changed("failure-pattern") {
+		explicitFields["failure_pattern"] = true
+	}
+	if cmd.Flags().Changed("case-insensitive") {
+		explicitFields["case_insensitive"] = true
+	}
+
+	// Load configuration with precedence
+	finalConfig, debugInfo, err := config.LoadWithPrecedenceAndExplicitFlags(configPath, flagConfig, explicitFields, commonConfig.DebugConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Print debug information if requested
+	if commonConfig.DebugConfig && debugInfo != nil {
+		debugInfo.PrintDebugInfo()
+		fmt.Println() // Add blank line after debug info
+	}
+
+	return finalConfig, nil
 }
 
 // createExecutorFromConfig creates an executor from strategy and common configuration

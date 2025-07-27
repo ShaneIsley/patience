@@ -46,11 +46,13 @@ We chose subcommands over a flag-based approach for several key reasons:
 - `jitter` (`jit`) - Random jitter around base delay
 - `decorrelated-jitter` (`dj`) - AWS-style decorrelated jitter
 - `fibonacci` (`fib`) - Fibonacci sequence delays
+- `polynomial` (`poly`) - Polynomial growth with configurable exponent
+- `adaptive` (`adapt`) - Machine learning adaptive strategy
 
 ### **3.2. Execution Flow**
 
 1. **Strategy Selection:** User selects strategy via subcommand (e.g., `patience exponential`)
-2. **Configuration Parsing:** Strategy-specific flags are parsed along with common flags (attempts, timeout, patterns)
+2. **Configuration Parsing:** Strategy-specific flags are parsed along with common flags (attempts, timeout, patterns). Configuration follows precedence: CLI flags > environment variables > config file > defaults
 3. **Strategy Initialization:** The appropriate backoff strategy is created with strategy-specific parameters
 4. **Executor Creation:** An Executor is created with the strategy, common configuration, and optional condition checker
 5. **Attempt Loop:** The executor enters a loop for each attempt:
@@ -63,7 +65,8 @@ We chose subcommands over a flag-based approach for several key reasons:
    * **Exit Code Evaluation:** Falls back to standard exit code checking
 7. **Adaptive Delay Calculation:** If retry is needed:
    * **HTTP-Aware:** Uses server-provided timing or falls back to configured strategy
-   * **Mathematical Strategies:** Use algorithm-specific calculations (exponential, linear, etc.)
+   * **Adaptive:** Records outcome and adjusts future delays based on learning algorithm
+   * **Mathematical Strategies:** Use algorithm-specific calculations (exponential, linear, polynomial, etc.)
 8. **Termination:** Loop terminates on success or max attempts reached
 9. **Status Reporting:** Real-time attempt status and final summary via UI reporter
 10. **Metrics Dispatch (Async):** Optional fire-and-forget metrics to daemon
@@ -117,22 +120,25 @@ The HTTP-aware strategy represents a significant architectural innovation:
 
 /patience  
 ├── /cmd  
-│   └── /patience      \# Main package with subcommand architecture (Cobra)  
-│       ├── main.go           \# Root command and strategy registration
-│       └── subcommands.go    \# All strategy subcommand implementations
+│   ├── /patience      \# Main package with subcommand architecture (Cobra)  
+│   │   ├── main.go           \# Root command and strategy registration
+│   │   └── subcommands.go    \# All strategy subcommand implementations
+│   └── /patienced     \# Optional daemon for metrics aggregation
 ├── /pkg  
 │   ├── /executor      \# Core logic for running and managing commands  
 │   ├── /config        \# Configuration loading and validation  
 │   ├── /backoff       \# All backoff strategies including HTTP-aware intelligence  
-│   │   ├── strategy.go       \# Base strategy interface
+│   │   ├── strategy.go       \# Base strategy interface and core strategies
 │   │   ├── http_aware.go     \# HTTP response parsing and adaptive timing
-│   │   └── [other strategies] \# Mathematical backoff implementations
+│   │   ├── adaptive.go       \# Machine learning adaptive strategy with EMA
+│   │   └── polynomial.go     \# Polynomial growth strategy
 │   ├── /conditions    \# Logic for checking success/failure conditions  
 │   ├── /metrics       \# Structs and client for sending data to patienced  
 │   ├── /ui            \# Terminal output and status reporting  
-│   └── /storage       \# Configuration and state persistence
-├── /cmd  
-│   └── /patienced     \# Optional daemon for metrics aggregation
+│   ├── /storage       \# Configuration and state persistence
+│   └── /monitoring    \# Resource monitoring and performance tracking
+├── /benchmarks        \# Performance testing infrastructure
+├── /examples          \# Real-world usage examples and integration tests
 └── /scripts           \# Installation, testing, and deployment scripts
 
 ## **4\. patienced Daemon \- Detailed Architecture**

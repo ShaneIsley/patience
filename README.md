@@ -1,6 +1,6 @@
 # patience
 
-A modern, intelligent command-line tool for retrying commands with adaptive backoff strategies. Built with Go and designed to be your patient companion when dealing with flaky commands, network requests, or any process that might need a second (or third, or fourth) chance.
+A modern, intelligent command-line tool for practicing patience with adaptive backoff strategies. Built with Go and designed to be your patient companion when dealing with flaky commands, network requests, or any process that might need a second (or third, or fourth) chance.
 
 **Author:** Shane Isley  
 **Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)  
@@ -13,12 +13,13 @@ We've all been there – a deployment script fails because of a temporary networ
 ## Features
 
 - **Strategy-based interface** – Choose the right backoff strategy for your use case
-- **HTTP-aware retries** – Respects `Retry-After` headers and server timing hints
-- **7 backoff strategies** – From simple fixed delays to AWS-recommended decorrelated jitter
+- **HTTP-aware patience** – Respects `Retry-After` headers and server timing hints
+- **9 backoff strategies** – From simple fixed delays to machine learning adaptive strategies
 - **Intelligent pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
 - **Zero dependencies** – Single binary that works anywhere
+- **Metrics Daemon (Optional)** – Collect and visualize patience metrics with the [`patienced` daemon](DAEMON.md)
 
 ## Installation
 
@@ -36,7 +37,7 @@ go build -o patience ./cmd/patience
 # Test with a command that always succeeds
 ./patience fixed -- echo "Hello, World!"
 
-# Test with a command that fails (will retry 3 times by default)
+# Test with a command that fails (will have patience 3 times by default)
 ./patience exponential -- false
 
 # Test HTTP-aware strategy
@@ -50,7 +51,7 @@ The basic syntax is: `patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]`
 ### Quick Start Examples
 
 ```bash
-# HTTP-aware retry for API calls (respects Retry-After headers)
+# HTTP-aware patience for API calls (respects Retry-After headers)
 patience http-aware -- curl -i https://api.github.com/user
 
 # Exponential backoff with custom parameters
@@ -59,7 +60,7 @@ patience exponential --base-delay 1s --multiplier 2.0 -- curl https://api.stripe
 # Linear backoff for database connections
 patience linear --increment 2s --max-delay 30s -- psql -h db.example.com
 
-# Fixed delay for simple retries
+# Fixed delay for simple patience
 patience fixed --delay 5s -- flaky-script.sh
 
 # Using abbreviations for brevity
@@ -74,15 +75,17 @@ patience exp -b 1s -x 2.0 -- curl https://api.stripe.com
 | `http-aware` | `ha` | Respects HTTP `Retry-After` headers | API calls, HTTP requests |
 | `exponential` | `exp` | Exponentially increasing delays | Network operations, external services |
 | `linear` | `lin` | Linearly increasing delays | Rate-limited APIs, predictable timing |
-| `fixed` | `fix` | Fixed delay between retries | Simple retries, testing |
+| `fixed` | `fix` | Fixed delay between patience | Simple patience, testing |
 | `jitter` | `jit` | Random jitter around exponential | Distributed systems, load balancing |
 | `decorrelated-jitter` | `dj` | AWS-style decorrelated jitter | High-scale distributed systems |
 | `fibonacci` | `fib` | Fibonacci sequence delays | Moderate growth, gradual recovery |
+| `polynomial` | `poly` | Polynomial growth with configurable exponent | Customizable growth patterns |
+| `adaptive` | `adapt` | Machine learning adaptive strategy | Commands with changing patterns |
 
 ### Common Options (Available for All Strategies)
 
 ```bash
-# Set maximum retry attempts
+# Set maximum patience attempts
 patience exponential --attempts 5 -- command
 
 # Add timeout per attempt
@@ -96,6 +99,7 @@ patience exponential --failure-pattern "(?i)error|failed" -- health-check.sh
 
 # Case-insensitive pattern matching
 patience http-aware --success-pattern "SUCCESS" --case-insensitive -- deployment-script
+```
 
 ## Pattern Matching
 
@@ -166,10 +170,10 @@ patience --success-pattern "(deployed|updated) successfully" -- deploy.sh
 
 ### HTTP-Aware Strategy (`http-aware`, `ha`)
 
-The HTTP-aware strategy is patience's flagship feature - it intelligently parses HTTP responses to determine optimal retry timing.
+The HTTP-aware strategy is patience's flagship feature - it intelligently parses HTTP responses to determine optimal patience timing.
 
 ```bash
-# Basic HTTP-aware retry
+# Basic HTTP-aware patience
 patience http-aware -- curl -i https://api.github.com/user
 
 # With fallback strategy when no HTTP info available
@@ -181,7 +185,7 @@ patience http-aware --max-delay 5m -- curl https://api.slow-service.com
 
 **How it works:**
 - Parses `Retry-After` headers from HTTP responses
-- Extracts retry timing from JSON responses (`retry_after`, `retryAfter` fields)
+- Extracts patience timing from JSON responses (`retry_after`, `retryAfter` fields)
 - Falls back to specified strategy when no HTTP timing information is available
 - Validated with 7 major APIs: GitHub, Twitter, AWS, Stripe, Discord, Reddit, Slack
 
@@ -206,7 +210,7 @@ Increases delay by a fixed increment each attempt - predictable timing.
 
 ```bash
 # Linear progression (2s, 4s, 6s, 8s...)
-patience linear --increment 2s -- gradual-retry
+patience linear --increment 2s -- gradual-patience
 
 # With maximum delay cap
 patience linear --increment 1s --max-delay 30s -- rate-limited-api
@@ -241,7 +245,35 @@ Uses the Fibonacci sequence for delays - moderate growth between linear and expo
 
 ```bash
 # Fibonacci sequence delays (1s, 1s, 2s, 3s, 5s, 8s...)
-patience fibonacci --base-delay 1s -- moderate-growth-retry
+patience fibonacci --base-delay 1s -- moderate-growth-patience
+```
+
+#### Polynomial Backoff (`polynomial`, `poly`)
+Uses polynomial growth with configurable exponent for fine-tuned delay patterns.
+
+```bash
+# Quadratic backoff (1s, 4s, 9s, 16s...)
+patience polynomial --base-delay 1s --exponent 2.0 -- database-connection
+
+# Moderate growth (1s, 2.8s, 5.2s, 8s...)
+patience polynomial --base-delay 1s --exponent 1.5 -- api-call
+
+# Gentle sublinear growth
+patience polynomial --base-delay 1s --exponent 0.8 -- frequent-operation
+```
+
+#### Adaptive Strategy (`adaptive`, `adapt`)
+Machine learning-inspired strategy that learns from success/failure patterns to optimize timing.
+
+```bash
+# Basic adaptive with exponential fallback
+patience adaptive --learning-rate 0.1 --memory-window 50 -- flaky-service
+
+# Fast learning for rapidly changing conditions
+patience adaptive --learning-rate 0.5 --fallback fixed -- dynamic-api
+
+# Conservative learning with large memory
+patience adaptive --learning-rate 0.05 --memory-window 200 -- database-operation
 ```
 
 ### Strategy Comparison
@@ -251,10 +283,82 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 | `http-aware` | Server-directed | HTTP APIs, web services | Varies based on server response |
 | `exponential` | Exponential | Network calls, APIs | 1s, 2s, 4s, 8s |
 | `linear` | Linear | Rate-limited APIs | 1s, 2s, 3s, 4s |
-| `fixed` | Constant | Simple retries, testing | 1s, 1s, 1s, 1s |
+| `fixed` | Constant | Simple patience, testing | 1s, 1s, 1s, 1s |
 | `jitter` | Random exponential | Distributed systems | 0.3s, 1.8s, 0.9s, 5.2s |
 | `decorrelated-jitter` | Smart random | AWS services, high-scale | 1.2s, 2.8s, 1.9s, 4.1s |
 | `fibonacci` | Fibonacci | Moderate growth | 1s, 1s, 2s, 3s, 5s, 8s |
+| `polynomial` | Polynomial | Customizable growth | 1s, 4s, 9s, 16s (exponent=2.0) |
+| `adaptive` | Learning-based | Changing patterns | Adapts based on success/failure |
+
+## Configuration
+
+### Configuration Files
+
+`patience` supports configuration files for setting default values. Configuration files use TOML format and follow this precedence order:
+
+1. **CLI flags** (highest priority)
+2. **Environment variables** 
+3. **Configuration file**
+4. **Default values** (lowest priority)
+
+#### Auto-discovery
+
+`patience` automatically looks for configuration files in the current directory:
+- `.patience.toml`
+- `patience.toml`
+
+#### Manual Configuration
+
+Use the `--config` flag to specify a configuration file:
+
+```bash
+patience exponential --config /path/to/config.toml -- command
+```
+
+#### Example Configuration File
+
+```toml
+# .patience.toml
+attempts = 5
+timeout = "30s"
+success_pattern = "deployment successful|build completed"
+failure_pattern = "(?i)error|failed|timeout"
+case_insensitive = true
+
+# Strategy-specific settings (used when no CLI flags provided)
+base_delay = "1s"
+multiplier = 2.0
+max_delay = "10s"
+```
+
+### Environment Variables
+
+All configuration options can be set via environment variables with the `PATIENCE_` prefix:
+
+```bash
+export PATIENCE_ATTEMPTS=5
+export PATIENCE_TIMEOUT=30s
+export PATIENCE_SUCCESS_PATTERN="deployment successful"
+export PATIENCE_FAILURE_PATTERN="(?i)error|failed"
+export PATIENCE_CASE_INSENSITIVE=true
+
+# Strategy-specific variables
+export PATIENCE_BASE_DELAY=1s
+export PATIENCE_MULTIPLIER=2.0
+export PATIENCE_MAX_DELAY=10s
+
+patience exponential -- command
+```
+
+### Debug Configuration
+
+Use `--debug-config` to see how configuration values are resolved:
+
+```bash
+patience exponential --debug-config -- command
+```
+
+This shows the source of each configuration value (CLI flag, environment variable, config file, or default).
 
 ## Command-Line Options
 
@@ -267,6 +371,8 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 | `--success-pattern` | | | Regex pattern indicating success in stdout/stderr |
 | `--failure-pattern` | | | Regex pattern indicating failure in stdout/stderr |
 | `--case-insensitive` | | `false` | Make pattern matching case-insensitive |
+| `--config` | | | Configuration file path |
+| `--debug-config` | | `false` | Show configuration debug information |
 | `--help` | `-h` | | Show help information |
 
 ### Strategy-Specific Options
@@ -280,7 +386,7 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 #### Exponential Strategy
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for first retry |
+| `--base-delay` | `-b` | `1s` | Base delay for first patience |
 | `--multiplier` | `-x` | `2.0` | Multiplier for exponential growth |
 | `--max-delay` | `-m` | `60s` | Maximum delay cap |
 
@@ -315,6 +421,20 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 | `--base-delay` | `-b` | `1s` | Base delay for Fibonacci sequence |
 | `--max-delay` | `-m` | `60s` | Maximum delay cap |
 
+#### Polynomial Strategy
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--base-delay` | `-b` | `1s` | Base delay for polynomial calculation |
+| `--exponent` | `-e` | `2.0` | Polynomial exponent (controls growth rate) |
+| `--max-delay` | `-m` | `60s` | Maximum delay cap |
+
+#### Adaptive Strategy
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--learning-rate` | `-r` | `0.1` | Learning rate for adaptation (0.01-1.0) |
+| `--memory-window` | `-w` | `50` | Number of recent outcomes to remember (5-10000) |
+| `--fallback` | `-f` | `exponential` | Fallback strategy when learning data insufficient |
+
 ## How It Works
 
 1. **Run your command** – `patience` executes your command exactly as you would
@@ -330,7 +450,7 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 
 - **0** – Command succeeded on any attempt (remaining attempts skipped)
 - **1** – Command failed due to failure pattern match
-- **Non-zero** – Command failed after all retry attempts (matches the command's final exit code)
+- **Non-zero** – Command failed after all patience attempts (matches the command's final exit code)
 
 **Note:** `patience` exits with the result of the first successful attempt, not the last attempt.
 
@@ -339,7 +459,7 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 **Important:** `patience` stops immediately when a command succeeds - it does not execute remaining attempts.
 
 - ✅ **Exits on first success** - If attempt 1 succeeds, attempts 2-N are never executed
-- 🔄 **Only retries on failure** - Success means the job is complete
+- 🔄 **Only has patience on failure** - Success means the job is complete
 - 📊 **Preserves exit codes** - Your command's original behavior is maintained
 - ⏱️ **Efficient execution** - No wasted time on unnecessary attempts
 
@@ -348,7 +468,7 @@ patience fibonacci --base-delay 1s -- moderate-growth-retry
 # If API is up on attempt 1, attempts 2-5 are skipped
 patience exponential --attempts 5 -- curl https://api.example.com/health
 
-# Only retries while the service is starting up
+# Only has patience while the service is starting up
 patience linear --attempts 10 --increment 1s -- nc -z localhost 8080
 
 # This stops immediately if the first curl succeeds
@@ -367,6 +487,8 @@ This project follows Test-Driven Development (TDD) principles and is built incre
 - **Comprehensive test coverage** – Unit tests for all core functionality
 - **Integration tests** – End-to-end CLI testing
 - **Clean architecture** – Modular design with clear separation of concerns
+
+See [Development-Guidelines.md](Development-Guidelines.md) for details on our TDD process and code style.
 
 ### Running Tests
 
@@ -401,12 +523,14 @@ GOOS=windows GOARCH=amd64 go build -o patience.exe ./cmd/patience
 The project is organized into clean, testable packages:
 
 - `cmd/patience` – CLI interface with subcommand architecture using Cobra
-- `pkg/executor` – Core retry logic and command execution
+- `pkg/executor` – Core patience logic and command execution
 - `pkg/backoff` – Backoff strategies including HTTP-aware intelligence
 - `pkg/conditions` – Pattern matching for success/failure detection
 - `pkg/metrics` – Metrics collection and daemon communication
 - `pkg/ui` – Terminal output and status reporting
 - `pkg/config` – Configuration loading and validation
+
+See [Architecture.md](Architecture.md) for a detailed breakdown of the components.
 
 ## Contributing
 

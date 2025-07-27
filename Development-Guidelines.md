@@ -1,136 +1,154 @@
-# **Go Development & TDD Guidelines**
+# AGENTS.md - Development Guide for patience CLI
 
-This document outlines the Test-Driven Development (TDD) philosophy and the general Go development best practices for the patience CLI project with its modern subcommand architecture and HTTP-aware intelligence. Adhering to these guidelines is mandatory to ensure a high-quality, maintainable, and robust codebase.
+## Build/Test Commands
+- `go build ./...` - Build all packages
+- `go build -o patience ./cmd/patience` - Build main CLI binary
+- `go test ./...` - Run all tests
+- `go test -v ./pkg/executor` - Run tests for specific package
+- `go test -v ./pkg/backoff -run TestHTTPAware` - Run HTTP-aware strategy tests
+- `go test -v ./cmd/patience` - Run CLI integration tests
+- `go test -race ./...` - Run tests with race detection
+- `go test -cover ./...` - Run tests with coverage reporting
+- `go mod tidy` - Clean up dependencies
+- `gofmt -w .` - Format all Go files
+- `goimports -w .` - Format and organize imports
+- `golangci-lint run` - Run linter (requires .golangci.yml config)
 
-## **Part 1: Test-Driven Development (TDD)**
+## Test Categories & Coverage Requirements
 
-### **1.1. TDD Philosophy: Red, Green, Refactor**
+### Unit Tests (Component Level)
+- **Strategy Tests**: Each backoff strategy must have comprehensive unit tests
+- **Executor Tests**: Core retry logic with mocked command runners
+- **Config Tests**: Configuration parsing and validation
+- **Condition Tests**: Pattern matching and success/failure detection
 
-We will strictly follow the "Red, Green, Refactor" cycle for all new feature development.
+### Integration Tests (Component Interaction)
+- **CLI Integration**: All subcommands must be registered in createTestRootCommand()
+- **Executor-Strategy Integration**: Verify executor calls ProcessCommandOutput() for HTTP strategies
+- **End-to-End Workflows**: Complete CLI command execution with real strategies
 
-1. **RED \- Write a Failing Test:** Before writing any implementation code, write a test that describes a small, specific piece of desired functionality. The test must fail because the functionality does not yet exist. This proves that the test is valid and not producing a false positive.  
-2. **GREEN \- Write the Simplest Code to Pass the Test:** Write the absolute minimum amount of implementation code required to make the failing test pass. Do not add extra features or optimizations at this stage.  
-3. **REFACTOR \- Improve the Code:** With the safety of a passing test suite, refactor the implementation code for clarity, efficiency, and to remove duplication. Ensure that the tests continue to pass after refactoring.
+### Performance & Timing Tests
+- **Timing Tolerances**: Use environment-aware tolerances (CI: +100%, Local: +50%)
+- **Adaptive Strategy Testing**: Use stabilization periods before consistency checks
+- **Baseline Establishment**: Measure actual execution times before setting assertions
 
-### **1.2. Testing Conventions**
+## CLI Interface (Current Implementation)
 
-* **File Naming:** Test files must be named \_test.go and reside in the same package as the code they are testing.  
-* **Test Functions:** Test functions must start with Test and take t \*testing.T as their only parameter (e.g., func TestMyFunction(t \*testing.T)).  
-* **Sub-tests:** Use t.Run() to create sub-tests for grouping related checks and improving output clarity, especially for table-driven tests.  
-* **Table-Driven Tests:** Prefer table-driven tests for testing multiple input/output combinations of a single function. This keeps tests DRY (Don't Repeat Yourself).
+### Subcommand Architecture
+The CLI uses a strategy-based subcommand architecture:
 
-### **1.3. Testing Tooling**
+```bash
+# Basic syntax
+patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]
 
-* **Standard Library:** The testing package is the foundation.  
-* **Assertions:** We will use testify/require and testify/assert.  
-  * Use require for checks that must pass for the rest of the test to make sense (e.g., error checks, setup). A require failure stops the test immediately.  
-  * Use assert for all other checks. An assert failure reports the failure but allows the test function to continue.  
-* **Mocks and Fakes:** For dependencies (like command execution or filesystem access), we will use Go interfaces and create hand-written fake implementations for testing. Avoid complex mocking frameworks in favor of clarity and simplicity.
+# Available strategies with aliases
+patience http-aware (ha)           # HTTP response-aware delays
+patience exponential (exp)         # Exponentially increasing delays  
+patience linear (lin)              # Linearly increasing delays
+patience fixed (fix)               # Fixed delay between retries
+patience jitter (jit)              # Random jitter around base delay
+patience decorrelated-jitter (dj)  # AWS-style decorrelated jitter
+patience fibonacci (fib)           # Fibonacci sequence delays
+patience polynomial (poly)         # Polynomial growth delays
+patience adaptive (adapt)          # Machine learning adaptive delays
+```
 
-### **1.4. Test Scope**
+### Common Flags (All Strategies)
+- `--attempts, -a` - Maximum retry attempts (default: 3)
+- `--timeout, -t` - Timeout per attempt
+- `--success-pattern` - Regex pattern for success detection
+- `--failure-pattern` - Regex pattern for failure detection
+- `--case-insensitive` - Case-insensitive pattern matching
+- `--config` - Configuration file path
+- `--debug-config` - Show configuration debug information
 
-* **What to Test:**  
-  * All exported functions and methods.  
-  * Core business logic (retry loops, backoff calculations, condition checking).  
-  * **HTTP-aware intelligence** (HTTP response parsing, header extraction, JSON parsing).
-  * **Subcommand functionality** (argument parsing, configuration validation, strategy creation).
-  * **Strategy implementations** (all 7 backoff strategies with their specific behaviors).
-  * Edge cases (zero values, nil inputs, error conditions, malformed HTTP responses).  
-  * Integration tests to verify the interaction between major components (CLI parsing → Strategy → Executor).
-  * **Real HTTP integration tests** (testing against actual APIs when possible).
-* **What NOT to Test:**  
-  * Private functions directly (test them via the public API).  
-  * Third-party libraries (assume they work; test that *our* code uses them correctly).  
-  * Trivial getters/setters.
-  * **External API availability** (use mocks for unreliable external services).
+### Strategy-Specific Flags
+Each strategy has unique configuration options. Use `patience STRATEGY --help` for details.
 
-## **Part 2: General Go Development Practices**
+### Testing the CLI
+```bash
+# Test basic functionality
+./patience exponential --attempts 3 --base-delay 1s -- echo "test"
 
-### **2.1. Code Formatting**
+# Test HTTP-aware with real API
+./patience http-aware -- curl -i https://api.github.com/user
 
-* **gofmt is Law:** All Go code submitted to the repository **must** be formatted with gofmt. This is a non-negotiable standard that eliminates all debates about formatting.  
-* **goimports is the Standard:** We will use goimports, a superset of gofmt that also automatically adds and removes import statements. Most Go-compatible editors can be configured to run goimports on save.  
-* **CI Enforcement:** The CI pipeline will include a step that fails the build if any committed code is not formatted correctly.
+# Test pattern matching
+./patience fixed --success-pattern "SUCCESS" -- echo "SUCCESS: done"
 
-### **2.2. Static Analysis & Linting**
+# Test failure scenarios
+./patience exponential --attempts 2 -- false
 
-We will use golangci-lint as our standard linter to enforce code quality and catch common bugs before they are committed.
+# Test configuration features
+./patience exponential --config .patience.toml -- echo "test"
+./patience exponential --debug-config -- echo "test"
 
-* **Configuration:** A .golangci.yml file will be present in the root of the repository to ensure all developers use the same configuration.  
-* **Key Enabled Linters (Example):**  
-  * govet: Reports suspicious constructs.  
-  * errcheck: Checks for unhandled errors.  
-  * staticcheck: A suite of powerful static analysis checks.  
-  * unused: Checks for unused code.  
-  * ineffassign: Detects ineffectual assignments.  
-  * gocritic: Provides diagnostics on style and performance.  
-* **CI Enforcement:** The CI pipeline will run golangci-lint run on every commit. A failing lint check will fail the build.
+# Test environment variables
+PATIENCE_ATTEMPTS=5 ./patience fixed -- echo "test"
 
-### **2.3. Effective Go & Code Style**
+# Test new strategies
+./patience polynomial --exponent 1.5 -- echo "test"
+./patience adaptive --learning-rate 0.2 -- echo "test"
+```
 
-We will adhere to the principles outlined in the official "Effective Go" documentation. Key takeaways for this project include:
+## Code Style Guidelines
+- **Formatting**: All code MUST be formatted with `gofmt` and `goimports`
+- **Testing**: Follow TDD (Red-Green-Refactor). Use `testify/require` for critical checks, `testify/assert` for others
+- **Naming**: Use clear, descriptive names. Test functions start with `Test`, files end with `_test.go`
+- **Interfaces**: Accept interfaces, return structs. Use interfaces to define behavior, not data
+- **Error Handling**: Handle errors explicitly, never discard. Use `errors` package to wrap with context
+- **Comments**: All exported functions/types need godoc comments. Use complete sentences
+- **Packages**: Single purpose packages. Avoid generic utils packages
+- **Subcommands**: Each strategy subcommand should have its own configuration struct and validation
+- **HTTP Parsing**: Use Go standard library for HTTP response parsing, no external dependencies
+- **Strategy Pattern**: All backoff strategies implement the `backoff.Strategy` interface
 
-* **Simplicity:** Prefer clear, simple code over clever or complex solutions.  
-* **Interfaces:** Use interfaces to define behavior, not to describe data. Accept interfaces, return structs. This promotes decoupling and testability.
-  * **Strategy Pattern:** All backoff strategies implement the `backoff.Strategy` interface.
-  * **HTTP Parsing:** Use standard library interfaces for HTTP response handling.
-* **Error Handling:** Errors are values. Handle errors explicitly; do not discard them. Use the errors package to wrap errors to provide context. Avoid panicking in library code.
-  * **HTTP Parsing Errors:** Gracefully handle malformed HTTP responses with fallback behavior.
-  * **Configuration Errors:** Provide clear, actionable error messages for invalid configurations.
-* **Concurrency:** When using goroutines, ensure there is a clear plan for managing their lifecycle. Use channels for communication and synchronization. Be mindful of race conditions (use go test \-race).  
-* **Package Design:** Packages should have a clear, singular purpose. Avoid generic utility packages like utils or helpers.
-  * **Subcommand Organization:** Each strategy subcommand is self-contained with its own configuration and validation.
-  * **HTTP Intelligence:** HTTP-aware functionality is contained within the backoff package.
+## Development Process & Quality Assurance
 
-### **2.4. Dependency Management**
+### TDD Requirements
+- **Red-Green-Refactor**: Write failing test first, make it pass, then refactor
+- **Integration-First**: Test component interactions, not just isolated units
+- **Test Categories**: Ensure unit, integration, and end-to-end coverage
+- **Performance Baselines**: Establish timing baselines before writing timing assertions
 
-* **Go Modules:** This project will use Go Modules for all dependency management. The go.mod file is the source of truth for all dependencies.  
-* **Tidy Dependencies:** Before committing, always run go mod tidy to ensure the go.mod and go.sum files are clean and accurate.  
-* **Dependency Updates:** Dependencies should be updated deliberately and tested thoroughly. Avoid depending on master branches of other repositories.
+### Common Pitfalls & Prevention
+- **CLI Subcommand Registration**: Always add new strategy subcommands to createTestRootCommand()
+- **Adaptive Strategy Testing**: Use stabilization periods and tolerance-based assertions for learning behavior
+- **HTTP-Aware Integration**: Ensure executor calls ProcessCommandOutput() for HTTP strategies
+- **Timing Test Sensitivity**: Use realistic tolerances (200-300ms) for execution overhead
 
-### **2.5. Documentation & Commenting**
+### Quality Gates
+- **All tests must pass** with race detection: `go test -race ./...`
+- **Integration tests required** for new strategies and CLI commands
+- **Performance regression testing** for timing-sensitive components
+- **Documentation updates** for new features and architectural changes
 
-* **Godoc:** All exported types, functions, and methods **must** have clear, concise comments that conform to the godoc standard. A good comment explains *what* the function does from the caller's perspective.  
-* **Clarity over Brevity:** Comments should be complete sentences. For complex, unexported functions, add comments to explain the *why* behind the implementation.  
-* **Tests as Documentation:** A well-written test serves as executable documentation. Test function names should be descriptive of the behavior they are testing.
+## Project Structure
+- `/cmd/patience` - Main CLI package with subcommand architecture using Cobra
+  - `main.go` - Root command and strategy registration
+  - `subcommands.go` - All strategy subcommand implementations
+  - `executor_integration_test.go` - CLI integration tests
+- `/cmd/patienced` - Optional daemon for metrics aggregation
+- `/pkg/executor` - Core retry logic and command execution
+- `/pkg/config` - Configuration loading and validation
+- `/pkg/backoff` - All backoff strategies including HTTP-aware intelligence
+  - `strategy.go` - Base strategy interface
+  - `http_aware.go` - HTTP response parsing and adaptive timing
+  - `adaptive.go` - Machine learning adaptive strategy with EMA
+  - `polynomial.go` - Polynomial growth strategy
+  - `[other strategies]` - Mathematical backoff implementations
+- `/pkg/conditions` - Success/failure condition checking with regex support
+- `/pkg/metrics` - Metrics collection and daemon communication
+- `/pkg/ui` - Terminal output and status reporting
+- `/pkg/storage` - Configuration and state persistence
+- `/scripts` - Installation, testing, and deployment scripts
+- `/benchmarks` - Performance testing infrastructure
+- `/examples` - Real-world usage examples and integration tests
 
-### **2.6. Project-Specific Patterns**
+## Architecture Integration Points
 
-#### **Subcommand Architecture Patterns**
-
-* **Configuration Structs:** Each strategy has its own configuration struct (e.g., `HTTPAwareConfig`, `ExponentialConfig`).
-* **Validation Methods:** All configuration structs implement a `Validate() error` method.
-* **Common Configuration:** Use `CommonConfig` for shared options (attempts, timeout, patterns).
-* **Strategy Creation:** Each subcommand creates its strategy and calls `executeWithStrategy()` or similar.
-
-#### **HTTP-Aware Intelligence Patterns**
-
-* **Response Parsing:** Use Go standard library for HTTP parsing (`net/http`, `encoding/json`).
-* **Graceful Fallback:** Always provide fallback behavior when HTTP parsing fails.
-* **Header Extraction:** Parse `Retry-After` headers with support for both relative and absolute formats.
-* **JSON Field Extraction:** Look for common retry fields (`retry_after`, `retryAfter`, `retry_in`).
-
-#### **Strategy Implementation Patterns**
-
-* **Interface Compliance:** All strategies implement `backoff.Strategy` interface.
-* **Immutable Configuration:** Strategy configuration should be immutable after creation.
-* **Deterministic Testing:** Provide deterministic behavior for testing (avoid pure randomness).
-* **Boundary Validation:** Validate all timing parameters (non-negative, reasonable maximums).
-
-#### **Testing Patterns**
-
-* **Table-Driven Tests:** Use table-driven tests for multiple input/output scenarios.
-* **HTTP Mocking:** Use `httptest.Server` for HTTP integration tests.
-* **Real API Testing:** Include optional tests against real APIs (marked with build tags).
-* **Subcommand Testing:** Test CLI parsing and configuration validation separately from execution.
-
-### **2.7. Version Control**
-
-* **Commit Messages:** We will use the [Conventional Commits](https://www.conventionalcommits.org/) specification. This creates an explicit commit history that is easy to read and can be used for automated changelog generation.  
-  * Example: feat(http-aware): add support for JSON retry field parsing
-  * Example: feat(subcommands): implement linear backoff strategy subcommand
-  * Example: fix(backoff): correct calculation in exponential strategy  
-  * Example: docs(readme): update usage examples for subcommand interface
-  * Example: test(http-aware): add integration tests for GitHub API
-* **Small, Atomic Commits:** Each commit should represent a single logical change. Avoid large, monolithic commits that mix features, bug fixes, and refactoring.
-* **Strategy-Focused Commits:** When adding new strategies, include the subcommand, tests, and documentation in the same commit.
+### Critical Integration Requirements
+- **HTTP-Aware**: Executor calls `strategy.ProcessCommandOutput(stdout, stderr, exitCode)` after each command ✅
+- **Adaptive**: Executor integration with `strategy.RecordOutcome(delay, success, latency)` for learning ⚠️ (Method exists but not called by executor)
+- **CLI Testing**: `createTestRootCommand()` must register ALL strategy subcommands ✅
+- **All Strategies**: Executor calls `strategy.Delay(attempt)` for backoff timing ✅

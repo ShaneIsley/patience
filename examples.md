@@ -225,13 +225,13 @@ Simple file and directory operations that might need patience:
 
 ```bash
 # Wait for a file to appear (common in CI/CD)
-patience --attempts 20 --delay 1s -- test -f /tmp/build-complete.flag
+patience fixed --attempts 20 --delay 1s -- test -f /tmp/build-complete.flag
 
 # Wait for a process to release a file lock
-patience --attempts 10 --delay 2s -- rm /var/lock/myapp.lock
+patience fixed --attempts 10 --delay 2s -- rm /var/lock/myapp.lock
 
 # Check if a directory is ready
-patience --attempts 5 --delay 1s -- test -d /mnt/shared/ready
+patience fixed --attempts 5 --delay 1s -- test -d /mnt/shared/ready
 ```
 
 ## SSH & Remote Operations
@@ -419,7 +419,7 @@ Use when you want predictable, consistent timing:
 
 ```bash
 # Always wait exactly 2 seconds between attempts
-patience --attempts 5 --delay 2s -- your-command
+patience fixed --attempts 5 --delay 2s -- your-command
 
 # Good for: local operations, predictable timing needs
 ```
@@ -429,13 +429,13 @@ Use for network operations and external services (recommended):
 
 ```bash
 # Wait 1s, then 2s, then 4s, then 8s...
-patience --attempts 5 --delay 1s --backoff exponential -- api-call
+patience exponential --attempts 5 --base-delay 1s -- api-call
 
 # With custom multiplier (1s, 1.5s, 2.25s, 3.375s...)
-patience --attempts 5 --delay 1s --backoff exponential --multiplier 1.5 -- api-call
+patience exponential --attempts 5 --base-delay 1s --multiplier 1.5 -- api-call
 
 # With maximum delay cap (1s, 2s, 4s, 5s, 5s...)
-patience --attempts 6 --delay 1s --backoff exponential --max-delay 5s -- api-call
+patience exponential --attempts 6 --base-delay 1s --max-delay 5s -- api-call
 ```
 
 **Why exponential backoff?**
@@ -449,10 +449,10 @@ Use to prevent thundering herd problems when multiple instances retry simultaneo
 
 ```bash
 # Random delays between 0 and exponential backoff time
-patience --attempts 5 --delay 1s --backoff jitter -- distributed-api-call
+patience jitter --attempts 5 --base-delay 1s -- distributed-api-call
 
 # With max delay cap to prevent excessive waits
-patience --attempts 5 --delay 1s --backoff jitter --max-delay 10s -- high-scale-service
+patience jitter --attempts 5 --base-delay 1s --max-delay 10s -- high-scale-service
 ```
 
 **Why jitter?**
@@ -466,10 +466,10 @@ Use when you want predictable, incremental delays:
 
 ```bash
 # Wait 1s, then 2s, then 3s, then 4s...
-patience --attempts 5 --delay 1s --backoff linear -- gradual-retry
+patience linear --attempts 5 --increment 1s -- gradual-retry
 
 # With max delay cap (1s, 2s, 3s, 5s, 5s...)
-patience --attempts 6 --delay 1s --backoff linear --max-delay 5s -- capped-linear
+patience linear --attempts 6 --increment 1s --max-delay 5s -- capped-linear
 ```
 
 **Why linear backoff?**
@@ -483,10 +483,10 @@ Use for AWS services and high-scale distributed systems (AWS recommended):
 
 ```bash
 # Smart jitter based on previous delay
-patience --attempts 5 --delay 1s --backoff decorrelated-jitter --multiplier 3.0 -- aws-api-call
+patience decorrelated-jitter --attempts 5 --base-delay 1s --multiplier 3.0 -- aws-api-call
 
 # With max delay for production systems
-patience --attempts 8 --delay 500ms --backoff decorrelated-jitter --multiplier 3.0 --max-delay 30s -- production-service
+patience decorrelated-jitter --attempts 8 --base-delay 500ms --multiplier 3.0 --max-delay 30s -- production-service
 ```
 
 **Why decorrelated jitter?**
@@ -500,10 +500,10 @@ Use when you want moderate growth between linear and exponential:
 
 ```bash
 # Wait 1s, 1s, 2s, 3s, 5s, 8s...
-patience --attempts 6 --delay 1s --backoff fibonacci -- moderate-growth
+patience fibonacci --attempts 6 --base-delay 1s -- moderate-growth
 
 # Good for services that need time to recover
-patience --attempts 8 --delay 500ms --backoff fibonacci --max-delay 15s -- recovery-service
+patience fibonacci --attempts 8 --base-delay 500ms --max-delay 15s -- recovery-service
 ```
 
 **Why fibonacci backoff?**
@@ -511,6 +511,46 @@ patience --attempts 8 --delay 500ms --backoff fibonacci --max-delay 15s -- recov
 - Natural progression that's not too aggressive
 - Good for services that need gradual recovery time
 - Mathematical elegance with practical benefits
+
+### Polynomial Backoff
+Use when you want customizable growth patterns:
+
+```bash
+# Quadratic growth (1s, 4s, 9s, 16s...)
+patience polynomial --attempts 5 --base-delay 1s --exponent 2.0 -- database-connection
+
+# Moderate growth (1s, 2.8s, 5.2s, 8s...)
+patience polynomial --attempts 5 --base-delay 1s --exponent 1.5 -- api-call
+
+# Gentle sublinear growth
+patience polynomial --attempts 5 --base-delay 1s --exponent 0.8 -- frequent-operation
+```
+
+**Why polynomial backoff?**
+- Highly customizable growth patterns
+- Fine-tuned control over delay progression
+- Can be sublinear, linear, or superlinear
+- Mathematical precision for specific use cases
+
+### Adaptive Strategy
+Use when you want machine learning-inspired optimization:
+
+```bash
+# Basic adaptive with exponential fallback
+patience adaptive --attempts 10 --learning-rate 0.1 --memory-window 50 -- flaky-service
+
+# Fast learning for rapidly changing conditions
+patience adaptive --attempts 8 --learning-rate 0.5 --fallback fixed -- dynamic-api
+
+# Conservative learning with large memory
+patience adaptive --attempts 15 --learning-rate 0.05 --memory-window 200 -- database-operation
+```
+
+**Why adaptive strategy?**
+- Learns from success/failure patterns
+- Optimizes timing based on actual performance
+- Adapts to changing service conditions
+- Machine learning-inspired approach
 
 ## Quick Reference
 
@@ -548,6 +588,8 @@ patience exponential --attempts 5 --base-delay 500ms --max-delay 10s --timeout 3
 | Database connections | `exponential` | Good for startup delays | `patience exp -b 1s -- pg_isready` |
 | Simple retries | `fixed` | Consistent timing | `patience fix -d 3s -- simple-command` |
 | Gradual recovery | `fibonacci` | Moderate growth | `patience fib -b 2s -- recovering-service` |
+| Custom growth patterns | `polynomial` | Fine-tuned control | `patience poly -e 1.5 -- custom-service` |
+| Learning systems | `adaptive` | Optimizes over time | `patience adapt -r 0.1 -- changing-service` |
 
 ### Typical Parameters by Use Case
 
@@ -631,9 +673,13 @@ patience exponential --base-delay 3s -- docker-compose exec web curl -f http://l
 - **Decorrelated jitter for AWS**: AWS-recommended strategy for their services
 - **Fixed for simplicity**: When you want predictable, consistent timing
 - **Fibonacci for recovery**: Good middle ground between linear and exponential growth
+- **Polynomial for precision**: When you need exact control over growth patterns
+- **Adaptive for learning**: When services have changing patterns or you want optimization
 - **Always use timeouts**: Prevent commands from hanging with `--timeout`
 - **Pattern matching**: Use `--success-pattern` and `--failure-pattern` for smart detection
-- **Abbreviations save time**: `ha`, `exp`, `lin`, `fix`, `jit`, `dj`, `fib`
+- **Configuration files**: Use `.patience.toml` for project defaults
+- **Environment variables**: Use `PATIENCE_*` for CI/CD environments
+- **Abbreviations save time**: `ha`, `exp`, `lin`, `fix`, `jit`, `dj`, `fib`, `poly`, `adapt`
 
 ---
 

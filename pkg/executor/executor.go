@@ -312,6 +312,25 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			}, nil
 		}
 
+		// If failure pattern matched, stop immediately (don't retry)
+		if conditionResult.Reason == "failure pattern matched" {
+			stats.Finalize(false, conditionResult.Reason)
+
+			// Create run metrics
+			totalDuration := time.Since(runStartTime)
+			runMetrics := metrics.NewRunMetrics(command, false, totalDuration, attemptMetrics)
+
+			return &Result{
+				AttemptCount: attempt,
+				ExitCode:     output.ExitCode,
+				Success:      false,
+				TimedOut:     false,
+				Reason:       conditionResult.Reason,
+				Stats:        stats,
+				Metrics:      runMetrics,
+			}, nil
+		}
+
 		// If this was the last attempt, break out of loop
 		if attempt == e.MaxAttempts {
 			// Report final failure (no retry)

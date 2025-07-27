@@ -465,18 +465,11 @@ func (c *Config) Validate() error {
 	var errors []ValidationError
 
 	// Validate attempts
-	if c.Attempts <= 0 {
+	if c.Attempts < 1 || c.Attempts > 1000 {
 		errors = append(errors, ValidationError{
 			Field:   "attempts",
 			Value:   c.Attempts,
-			Message: "must be greater than 0",
-		})
-	}
-	if c.Attempts > 1000 {
-		errors = append(errors, ValidationError{
-			Field:   "attempts",
-			Value:   c.Attempts,
-			Message: "must be 1000 or less to prevent excessive resource usage",
+			Message: "must be between 1 and 1000",
 		})
 	}
 
