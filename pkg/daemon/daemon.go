@@ -20,14 +20,15 @@ import (
 
 // Daemon represents the retry metrics daemon
 type Daemon struct {
-	config   *Config
-	storage  *storage.MetricsStorage
-	listener net.Listener
-	server   *Server
-	logger   *log.Logger
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
+	config        *Config
+	storage       *storage.MetricsStorage
+	listener      net.Listener
+	server        *Server
+	logger        *log.Logger
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	connectionSem chan struct{}
 }
 
 // Config holds daemon configuration
@@ -40,6 +41,7 @@ type Config struct {
 	PidFile         string        `json:"pid_file"`
 	EnableHTTP      bool          `json:"enable_http"`
 	EnableProfiling bool          `json:"enable_profiling"`
+	MaxConnections  int           `json:"max_connections"`
 }
 
 // DefaultConfig returns a default daemon configuration
@@ -53,6 +55,7 @@ func DefaultConfig() *Config {
 		PidFile:         "/tmp/retry-daemon.pid",
 		EnableHTTP:      true,
 		EnableProfiling: false,
+		MaxConnections:  100,
 	}
 }
 
@@ -60,6 +63,14 @@ func DefaultConfig() *Config {
 func NewDaemon(config *Config) (*Daemon, error) {
 	if config == nil {
 		config = DefaultConfig()
+	}
+
+	// Validate MaxConnections
+	if config.MaxConnections <= 0 {
+		config.MaxConnections = 100 // Default fallback
+	}
+	if config.MaxConnections > 10000 {
+		config.MaxConnections = 10000 // Reasonable upper limit
 	}
 
 	// Create context for graceful shutdown
@@ -72,11 +83,12 @@ func NewDaemon(config *Config) (*Daemon, error) {
 	metricsStorage := storage.NewMetricsStorage(config.MaxMetrics, config.MetricsMaxAge)
 
 	daemon := &Daemon{
-		config:  config,
-		storage: metricsStorage,
-		logger:  logger,
-		ctx:     ctx,
-		cancel:  cancel,
+		config:        config,
+		storage:       metricsStorage,
+		logger:        logger,
+		ctx:           ctx,
+		cancel:        cancel,
+		connectionSem: make(chan struct{}, config.MaxConnections),
 	}
 
 	return daemon, nil
@@ -191,12 +203,25 @@ func (d *Daemon) handleConnections() {
 				continue
 			}
 
-			// Handle connection in goroutine
-			d.wg.Add(1)
-			go func() {
-				defer d.wg.Done()
-				d.handleConnection(conn)
-			}()
+			// Try to acquire semaphore for connection limiting
+			select {
+			case d.connectionSem <- struct{}{}:
+				// Successfully acquired semaphore, handle connection
+				d.wg.Add(1)
+				go func() {
+					defer d.wg.Done()
+					defer func() { <-d.connectionSem }() // Release semaphore when done
+					d.handleConnection(conn)
+				}()
+			case <-d.ctx.Done():
+				// Context cancelled while waiting for semaphore
+				conn.Close()
+				return
+			default:
+				// Connection limit reached, reject connection gracefully
+				d.logger.Printf("Connection limit (%d) reached, rejecting connection", d.config.MaxConnections)
+				conn.Close()
+			}
 		}
 	}
 }

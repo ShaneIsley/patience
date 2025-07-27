@@ -286,6 +286,18 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			Success:  conditionResult.Success,
 		})
 
+		// Record outcome for adaptive strategies
+		if adaptiveStrategy, ok := e.BackoffStrategy.(interface {
+			RecordOutcome(delay time.Duration, success bool, latency time.Duration)
+		}); ok {
+			// Calculate the delay that was actually used for this attempt
+			var actualDelay time.Duration
+			if attempt > 1 && e.BackoffStrategy != nil {
+				actualDelay = e.BackoffStrategy.Delay(attempt - 1)
+			}
+			adaptiveStrategy.RecordOutcome(actualDelay, conditionResult.Success, attemptDuration)
+		}
+
 		// Process command output for HTTP-aware strategies
 		if httpAware, ok := e.BackoffStrategy.(interface {
 			ProcessCommandOutput(stdout, stderr string, exitCode int)

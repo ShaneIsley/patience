@@ -506,7 +506,7 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate backoff type
-	validBackoffTypes := []string{"fixed", "exponential", "jitter", "linear", "decorrelated-jitter", "fibonacci"}
+	validBackoffTypes := []string{"fixed", "exponential", "jitter", "linear", "decorrelated-jitter", "fibonacci", "adaptive", "polynomial", "http-aware"}
 	if c.BackoffType != "" {
 		isValid := false
 		for _, validType := range validBackoffTypes {
@@ -519,7 +519,7 @@ func (c *Config) Validate() error {
 			errors = append(errors, ValidationError{
 				Field:   "backoff",
 				Value:   c.BackoffType,
-				Message: "must be one of: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci",
+				Message: "must be one of: fixed, exponential, jitter, linear, decorrelated-jitter, fibonacci, adaptive, polynomial, http-aware",
 			})
 		}
 	}
