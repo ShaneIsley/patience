@@ -181,22 +181,17 @@ func (a *Adaptive) updateDelayBucketsLocked() {
 			bucket.SampleCount++
 			bucket.TotalLatency += outcome.Latency
 
+			// Apply exponential moving average formula: new_rate = (1-α)*old_rate + α*outcome
+			// Where α = learning_rate, outcome = 1.0 for success, 0.0 for failure
+			var outcomeValue float64
 			if outcome.Success {
-				// Update success rate using exponential moving average
-				if bucket.SampleCount == 1 {
-					bucket.SuccessRate = 1.0
-				} else {
-					// Exponential moving average with learning rate
-					bucket.SuccessRate = (1-a.learningRate)*bucket.SuccessRate + a.learningRate*1.0
-				}
+				outcomeValue = 1.0
 			} else {
-				// Update with failure
-				if bucket.SampleCount == 1 {
-					bucket.SuccessRate = 0.0
-				} else {
-					bucket.SuccessRate = (1-a.learningRate)*bucket.SuccessRate + a.learningRate*0.0
-				}
+				outcomeValue = 0.0
 			}
+
+			// Apply EMA formula to all samples (starting from initial rate of 0.0)
+			bucket.SuccessRate = (1-a.learningRate)*bucket.SuccessRate + a.learningRate*outcomeValue
 		}
 	}
 }
@@ -237,6 +232,30 @@ func (a *Adaptive) findBucketIndexForTesting(delay time.Duration) int {
 	}
 
 	return a.findBucketIndexLocked(delay)
+}
+
+// getBucketSuccessRateForTesting is a test helper that returns the success rate for a bucket containing the given delay
+// This method is only used for testing EMA accuracy
+func (a *Adaptive) getBucketSuccessRateForTesting(delay time.Duration) float64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	// Ensure buckets are initialized
+	if len(a.delayBuckets) == 0 {
+		return 0.0
+	}
+
+	bucketIndex := a.findBucketIndexLocked(delay)
+	if bucketIndex < 0 {
+		return 0.0
+	}
+
+	bucket, exists := a.delayBuckets[bucketIndex]
+	if !exists {
+		return 0.0
+	}
+
+	return bucket.SuccessRate
 }
 
 // initializeBucketsLocked initializes the delay buckets
