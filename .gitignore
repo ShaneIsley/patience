@@ -75,4 +75,4 @@ daemon.error.log
 
 # Development artifacts
 TDD-Implementation-Plan.md
-*-Implementation-Plan.md
+*-Implementation-Plan.mdperformance_results/*.txt
