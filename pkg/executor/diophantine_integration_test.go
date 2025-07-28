@@ -13,8 +13,8 @@ func TestExecutor_DiophantineWithDaemon(t *testing.T) {
 	strategy := backoff.NewDiophantine(5, time.Hour, []time.Duration{0, 10 * time.Minute})
 	executor := NewExecutorWithBackoff(3, strategy)
 
-	// Add daemon client to executor
-	daemonClient := daemon.NewDaemonClient("localhost:8080")
+	// Add daemon client to executor (using Unix socket path)
+	daemonClient := daemon.NewDaemonClient("/tmp/patience-daemon.sock")
 	executor.DaemonClient = daemonClient
 
 	// Test successful execution (should work even without daemon running due to fallback)

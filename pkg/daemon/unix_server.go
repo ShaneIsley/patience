@@ -173,13 +173,13 @@ func (s *UnixServer) handleConnection(conn net.Conn) {
 		// Parse and handle the message
 		response := s.handleProtocolMessage(strings.TrimSpace(line))
 
-		// Send response
+		// Send response with newline
 		responseData, err := json.Marshal(response)
 		if err != nil {
 			continue
 		}
 
-		conn.Write(responseData)
+		conn.Write(append(responseData, '\n'))
 	}
 }
 

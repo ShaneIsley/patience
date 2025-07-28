@@ -63,6 +63,8 @@ patienced
 *.sock
 *.pid
 /tmp/
+code-quality-report-*.md
+
 /var/
 
 # Test artifacts
@@ -77,3 +79,5 @@ daemon.error.log
 TDD-Implementation-Plan.md
 *-Implementation-Plan.mdperformance_results/*.txt
 tmp/
+code-quality-report-*.md
+
