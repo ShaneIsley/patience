@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 	"github.com/shaneisley/patience/pkg/backoff"
 	"github.com/shaneisley/patience/pkg/conditions"
 	"github.com/shaneisley/patience/pkg/config"
+	"github.com/shaneisley/patience/pkg/daemon"
 	"github.com/shaneisley/patience/pkg/executor"
 	"github.com/shaneisley/patience/pkg/metrics"
 	"github.com/shaneisley/patience/pkg/ui"
@@ -20,6 +22,7 @@ import (
 var (
 	lastHTTPAwareConfig   HTTPAwareConfig
 	lastExponentialConfig ExponentialConfig
+	lastDiophantineConfig DiophantineConfig
 	lastParsedCommand     []string
 	testMode              bool // Set to true during tests to avoid os.Exit()
 )
@@ -33,6 +36,12 @@ type CommonConfig struct {
 	CaseInsensitive bool          `json:"case_insensitive"`
 	ConfigFile      string        `json:"-"` // Config file path (not serialized)
 	DebugConfig     bool          `json:"-"` // Debug config flag (not serialized)
+
+	// Daemon configuration
+	DaemonEnabled   bool          `json:"daemon_enabled"`
+	DaemonSocket    string        `json:"daemon_socket"`
+	DaemonTimeout   time.Duration `json:"daemon_timeout"`
+	DaemonAutoStart bool          `json:"daemon_auto_start"`
 }
 
 // Validate validates the common configuration
@@ -69,6 +78,12 @@ func NewCommonConfig() CommonConfig {
 		SuccessPattern:  "",
 		FailurePattern:  "",
 		CaseInsensitive: false,
+
+		// Daemon defaults
+		DaemonEnabled:   false,
+		DaemonSocket:    "/tmp/patience-daemon.sock",
+		DaemonTimeout:   5 * time.Second,
+		DaemonAutoStart: true,
 	}
 }
 
@@ -332,6 +347,12 @@ func loadConfigWithPrecedence(cmd *cobra.Command, commonConfig *CommonConfig) (*
 		SuccessPattern:  commonConfig.SuccessPattern,
 		FailurePattern:  commonConfig.FailurePattern,
 		CaseInsensitive: commonConfig.CaseInsensitive,
+
+		// Daemon configuration
+		DaemonEnabled:   commonConfig.DaemonEnabled,
+		DaemonSocket:    commonConfig.DaemonSocket,
+		DaemonTimeout:   commonConfig.DaemonTimeout,
+		DaemonAutoStart: commonConfig.DaemonAutoStart,
 	}
 
 	// Track which flags were explicitly set
@@ -350,6 +371,18 @@ func loadConfigWithPrecedence(cmd *cobra.Command, commonConfig *CommonConfig) (*
 	}
 	if cmd.Flags().Changed("case-insensitive") {
 		explicitFields["case_insensitive"] = true
+	}
+	if cmd.Flags().Changed("daemon") {
+		explicitFields["daemon_enabled"] = true
+	}
+	if cmd.Flags().Changed("daemon-socket") {
+		explicitFields["daemon_socket"] = true
+	}
+	if cmd.Flags().Changed("daemon-timeout") {
+		explicitFields["daemon_timeout"] = true
+	}
+	if cmd.Flags().Changed("daemon-auto-start") {
+		explicitFields["daemon_auto_start"] = true
 	}
 
 	// Load configuration with precedence
@@ -587,6 +620,33 @@ type AdaptiveConfig struct {
 	MemoryWindow     int
 	FallbackStrategy string
 	FallbackConfig   interface{}
+}
+
+// DiophantineConfig holds configuration for the Diophantine strategy
+type DiophantineConfig struct {
+	RateLimit    int           `json:"rate_limit"`
+	Window       time.Duration `json:"window"`
+	RetryOffsets string        `json:"retry_offsets"`
+	ResourceID   string        `json:"resource_id"`
+}
+
+// Validate validates the Diophantine configuration
+func (c DiophantineConfig) Validate() error {
+	if c.RateLimit <= 0 {
+		return fmt.Errorf("rate limit must be positive, got %d", c.RateLimit)
+	}
+
+	if c.Window <= 0 {
+		return fmt.Errorf("window must be positive, got %v", c.Window)
+	}
+
+	// Validate retry offsets format
+	_, err := parseRetryOffsets(c.RetryOffsets)
+	if err != nil {
+		return fmt.Errorf("invalid retry offsets: %w", err)
+	}
+
+	return nil
 }
 
 // createLinearCommand creates the linear subcommand
@@ -963,4 +1023,205 @@ Examples:
 	addCommonFlags(cmd, &commonConfig)
 
 	return cmd
+}
+
+// parseRetryOffsets parses a comma-separated string of retry offsets into time.Duration slice
+func parseRetryOffsets(offsetsStr string) ([]time.Duration, error) {
+	if offsetsStr == "" {
+		return nil, fmt.Errorf("retry offsets cannot be empty")
+	}
+
+	parts := strings.Split(offsetsStr, ",")
+	offsets := make([]time.Duration, len(parts))
+
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "0" {
+			offsets[i] = 0
+			continue
+		}
+
+		duration, err := time.ParseDuration(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid duration '%s': %w", part, err)
+		}
+
+		if duration < 0 {
+			return nil, fmt.Errorf("retry offset cannot be negative: %v", duration)
+		}
+
+		offsets[i] = duration
+	}
+
+	return offsets, nil
+}
+
+// configureDaemonClient configures the executor with daemon client
+func configureDaemonClient(exec *executor.Executor, config CommonConfig) error {
+	// Create daemon client
+	client := daemon.NewDaemonClient(config.DaemonSocket)
+
+	// Test connection to daemon with a simple request
+	ctx, cancel := context.WithTimeout(context.Background(), config.DaemonTimeout)
+	defer cancel()
+
+	testReq := &daemon.ScheduleRequest{
+		ResourceID: "test-connection",
+		RateLimit:  1,
+		Window:     time.Second,
+	}
+
+	_, err := client.CanScheduleRequest(ctx, testReq)
+	if err != nil {
+		// If auto-start is enabled, try to start the daemon
+		if config.DaemonAutoStart {
+			err = startDaemon(config.DaemonSocket)
+			if err != nil {
+				return fmt.Errorf("failed to start daemon: %w", err)
+			}
+
+			// Retry connection after starting daemon
+			ctx2, cancel2 := context.WithTimeout(context.Background(), config.DaemonTimeout)
+			defer cancel2()
+			_, err = client.CanScheduleRequest(ctx2, testReq)
+			if err != nil {
+				return fmt.Errorf("failed to connect to daemon after startup: %w", err)
+			}
+		} else {
+			return fmt.Errorf("daemon not available: %w", err)
+		}
+	}
+
+	// Configure executor with daemon client
+	exec.DaemonClient = client
+	return nil
+}
+
+// startDaemon starts the patience daemon
+func startDaemon(socketPath string) error {
+	// For now, we'll return an error indicating that the user should start the daemon manually
+	// In a production implementation, this would:
+	// 1. Check if patienced binary exists
+	// 2. Start it with appropriate flags
+	// 3. Wait for it to be ready
+	return fmt.Errorf("daemon not running - please start it manually with: patienced -socket %s", socketPath)
+}
+
+// createDiophantineCommand creates the diophantine subcommand
+func createDiophantineCommand() *cobra.Command {
+	var strategyConfig DiophantineConfig
+	var commonConfig CommonConfig = NewCommonConfig()
+
+	// Set defaults
+	strategyConfig.RateLimit = 100
+	strategyConfig.Window = time.Hour
+	strategyConfig.RetryOffsets = "0,10m,30m"
+	strategyConfig.ResourceID = ""
+
+	cmd := &cobra.Command{
+		Use:     "diophantine [OPTIONS] -- COMMAND [ARGS...]",
+		Aliases: []string{"dioph"},
+		Short:   "Proactive rate limit compliance using Diophantine inequalities",
+		Long: `Diophantine strategy prevents rate limit violations before they occur by using
+mathematical modeling to ensure optimal throughput within rate limit constraints.
+This strategy is ideal for controlled environments where you schedule tasks.`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check if we have any arguments
+			if len(args) == 0 {
+				return fmt.Errorf("no command specified after '--'")
+			}
+
+			// Load configuration with precedence (file, env, flags)
+			cfg, err := loadConfigWithPrecedence(cmd, &commonConfig)
+			if err != nil {
+				return err
+			}
+
+			// Update common config from loaded configuration
+			commonConfig.Attempts = cfg.Attempts
+			commonConfig.Timeout = cfg.Timeout
+			commonConfig.SuccessPattern = cfg.SuccessPattern
+			commonConfig.FailurePattern = cfg.FailurePattern
+			commonConfig.CaseInsensitive = cfg.CaseInsensitive
+
+			// Update daemon configuration
+			commonConfig.DaemonEnabled = cfg.DaemonEnabled
+			commonConfig.DaemonSocket = cfg.DaemonSocket
+			commonConfig.DaemonTimeout = cfg.DaemonTimeout
+			commonConfig.DaemonAutoStart = cfg.DaemonAutoStart
+			// Validate configurations
+			if err := commonConfig.Validate(); err != nil {
+				return err
+			}
+
+			if err := strategyConfig.Validate(); err != nil {
+				return err
+			}
+
+			// Store parsed config and command for testing
+			lastDiophantineConfig = strategyConfig
+			lastParsedCommand = args
+
+			// Create strategy and execute
+			return executeWithDiophantine(strategyConfig, commonConfig, args)
+		},
+	}
+
+	// Add strategy-specific flags
+	cmd.Flags().IntVarP(&strategyConfig.RateLimit, "rate-limit", "r", strategyConfig.RateLimit, "Maximum requests allowed in the time window")
+	cmd.Flags().DurationVarP(&strategyConfig.Window, "window", "w", strategyConfig.Window, "Time window for rate limiting")
+	cmd.Flags().StringVarP(&strategyConfig.RetryOffsets, "retry-offsets", "o", strategyConfig.RetryOffsets, "Comma-separated retry timing offsets (e.g., 0,10m,30m)")
+	cmd.Flags().StringVar(&strategyConfig.ResourceID, "resource-id", strategyConfig.ResourceID, "Resource identifier for rate limiting (auto-detected if not specified)")
+
+	// Add daemon flags
+	cmd.Flags().BoolVar(&commonConfig.DaemonEnabled, "daemon", false, "Enable daemon coordination for multi-instance rate limiting")
+	cmd.Flags().StringVar(&commonConfig.DaemonSocket, "daemon-socket", "/tmp/patience-daemon.sock", "Daemon socket path")
+	cmd.Flags().DurationVar(&commonConfig.DaemonTimeout, "daemon-timeout", 5*time.Second, "Daemon connection timeout")
+	cmd.Flags().BoolVar(&commonConfig.DaemonAutoStart, "daemon-auto-start", true, "Automatically start daemon if not running")
+
+	// Add common flags
+	addCommonFlags(cmd, &commonConfig)
+
+	return cmd
+}
+
+// executeWithDiophantine executes a command using the Diophantine strategy
+func executeWithDiophantine(strategyConfig DiophantineConfig, commonConfig CommonConfig, commandArgs []string) error {
+	// Parse retry offsets
+	retryOffsets, err := parseRetryOffsets(strategyConfig.RetryOffsets)
+	if err != nil {
+		return fmt.Errorf("failed to parse retry offsets: %w", err)
+	}
+
+	// Create Diophantine strategy
+	strategy := backoff.NewDiophantine(strategyConfig.RateLimit, strategyConfig.Window, retryOffsets)
+
+	// Create executor
+	exec, err := createExecutorFromConfig(strategy, commonConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Set resource ID if specified
+	if strategyConfig.ResourceID != "" {
+		exec.ResourceID = strategyConfig.ResourceID
+	}
+
+	// Configure daemon client if enabled
+	if commonConfig.DaemonEnabled {
+		err := configureDaemonClient(exec, commonConfig)
+		if err != nil {
+			fmt.Printf("Warning: Failed to connect to daemon, falling back to local-only mode: %v\n", err)
+		}
+	}
+
+	// Execute command
+	result, err := exec.Run(commandArgs)
+	if err != nil {
+		return fmt.Errorf("execution error: %w", err)
+	}
+
+	// Handle results
+	return handleExecutionResult(result, exec)
 }

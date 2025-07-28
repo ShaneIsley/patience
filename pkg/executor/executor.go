@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/shaneisley/patience/pkg/backoff"
 	"github.com/shaneisley/patience/pkg/conditions"
+	"github.com/shaneisley/patience/pkg/daemon"
 	"github.com/shaneisley/patience/pkg/metrics"
 	"github.com/shaneisley/patience/pkg/ui"
 )
@@ -146,6 +149,8 @@ type Executor struct {
 	Timeout         time.Duration
 	Conditions      *conditions.Checker
 	Reporter        *ui.Reporter
+	DaemonClient    *daemon.DaemonClient // Optional daemon client for coordination
+	ResourceID      string               // Resource identifier for rate limiting
 }
 
 // NewExecutor creates a new Executor with default SystemCommandRunner and no backoff
@@ -219,8 +224,130 @@ func (e *Executor) executeAttempt(command []string) (CommandOutput, error, bool)
 	return output, err, false
 }
 
+// coordinateWithDaemon handles scheduling coordination with the daemon for Diophantine strategy
+func (e *Executor) coordinateWithDaemon(strategy *backoff.DiophantineStrategy, command []string) error {
+	// If no daemon client is configured, skip coordination (fallback mode)
+	if e.DaemonClient == nil {
+		return nil
+	}
+
+	// Determine resource ID (use configured ResourceID or derive from command)
+	resourceID := e.ResourceID
+	if resourceID == "" {
+		resourceID = e.deriveResourceID(command)
+	}
+
+	// Create schedule request
+	scheduleReq := &daemon.ScheduleRequest{
+		ResourceID:   resourceID,
+		RateLimit:    strategy.GetRateLimit(),
+		Window:       strategy.GetWindow(),
+		RetryOffsets: strategy.GetRetryOffsets(),
+		RequestTime:  time.Now(),
+	}
+
+	// Ask daemon if we can schedule now
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	response, err := e.DaemonClient.CanScheduleRequest(ctx, scheduleReq)
+	if err != nil {
+		// If daemon communication fails, fall back to local-only mode
+		if e.Reporter != nil {
+			e.Reporter.ShowWarning("Daemon unavailable, using local scheduling")
+		}
+		return nil
+	}
+
+	// If we can't schedule now, wait until we can
+	if !response.CanSchedule {
+		waitTime := time.Until(response.WaitUntil)
+		if waitTime > 0 {
+			if e.Reporter != nil {
+				e.Reporter.ShowWaiting(waitTime, "Waiting for rate limit slot...")
+			}
+			time.Sleep(waitTime)
+		}
+	}
+
+	// Register our planned requests with the daemon
+	plannedRequests := e.createPlannedRequests(resourceID, scheduleReq.RequestTime, strategy.GetRetryOffsets())
+	err = e.DaemonClient.RegisterScheduledRequests(ctx, plannedRequests)
+	if err != nil {
+		// Registration failure is not critical, continue with execution
+		if e.Reporter != nil {
+			e.Reporter.ShowWarning("Failed to register requests with daemon")
+		}
+	}
+
+	return nil
+}
+
+// deriveResourceID attempts to derive a resource identifier from the command
+func (e *Executor) deriveResourceID(command []string) string {
+	if len(command) == 0 {
+		return "unknown"
+	}
+
+	// Simple heuristics for common commands
+	switch command[0] {
+	case "curl":
+		// Extract hostname from curl command
+		for i, arg := range command {
+			if i > 0 && !strings.HasPrefix(arg, "-") {
+				if strings.HasPrefix(arg, "http") {
+					// Extract hostname from URL
+					if u, err := url.Parse(arg); err == nil {
+						return fmt.Sprintf("http-%s", u.Host)
+					}
+				}
+				return fmt.Sprintf("http-%s", arg)
+			}
+		}
+		return "http-api"
+	case "psql", "mysql":
+		return "database"
+	case "aws":
+		return "aws-api"
+	case "kubectl":
+		return "kubernetes-api"
+	default:
+		return fmt.Sprintf("cmd-%s", command[0])
+	}
+}
+
+// createPlannedRequests creates scheduled request entries for daemon registration
+func (e *Executor) createPlannedRequests(resourceID string, baseTime time.Time, retryOffsets []time.Duration) []*daemon.ScheduledRequest {
+	requests := make([]*daemon.ScheduledRequest, len(retryOffsets))
+
+	for i, offset := range retryOffsets {
+		requests[i] = &daemon.ScheduledRequest{
+			ID:          fmt.Sprintf("%s-%d-%d", resourceID, baseTime.Unix(), i),
+			ResourceID:  resourceID,
+			ScheduledAt: baseTime.Add(offset),
+			ExpiresAt:   baseTime.Add(offset).Add(time.Hour), // Expire after 1 hour
+		}
+	}
+
+	return requests
+}
+
 // Run executes the given command with retry logic and returns the result
 func (e *Executor) Run(command []string) (*Result, error) {
+	// Handle Diophantine strategy coordination with daemon
+	if diophantineStrategy, ok := e.BackoffStrategy.(*backoff.DiophantineStrategy); ok {
+		err := e.coordinateWithDaemon(diophantineStrategy, command)
+		if err != nil {
+			return &Result{
+				Success:      false,
+				AttemptCount: 0,
+				ExitCode:     -1,
+				TimedOut:     false,
+				Reason:       fmt.Sprintf("daemon coordination failed: %v", err),
+			}, err
+		}
+	}
+
 	var lastOutput CommandOutput
 	var lastError error
 	var timedOut bool

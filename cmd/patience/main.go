@@ -151,6 +151,7 @@ func init() {
 	rootCmd.AddCommand(createFibonacciCommand())
 	rootCmd.AddCommand(createPolynomialCommand())
 	rootCmd.AddCommand(createAdaptiveCommand())
+	rootCmd.AddCommand(createDiophantineCommand())
 }
 
 // loadConfiguration loads configuration with full precedence support

@@ -53,3 +53,45 @@ func (d *DiophantineStrategy) CanScheduleRequest(existing []time.Time, newReques
 	}
 	return true
 }
+
+// Delay implements the Strategy interface for compatibility with existing executor
+// For Diophantine strategy, this is a fallback that should rarely be used
+// The main scheduling logic is in CanScheduleRequest
+func (d *DiophantineStrategy) Delay(attempt int) time.Duration {
+	// Simple exponential backoff as fallback when daemon is not available
+	if attempt <= 0 {
+		return time.Second
+	}
+
+	// Use the first retry offset as base delay, with exponential growth
+	baseDelay := time.Second
+	if len(d.retryOffsets) > 1 {
+		baseDelay = d.retryOffsets[1] // Use second offset as it's usually the first retry
+	}
+
+	// Exponential backoff: baseDelay * 2^(attempt-1)
+	delay := baseDelay
+	for i := 1; i < attempt; i++ {
+		delay *= 2
+		if delay > time.Hour {
+			return time.Hour // Cap at 1 hour
+		}
+	}
+
+	return delay
+}
+
+// GetRateLimit returns the rate limit
+func (d *DiophantineStrategy) GetRateLimit() int {
+	return d.rateLimit
+}
+
+// GetWindow returns the time window
+func (d *DiophantineStrategy) GetWindow() time.Duration {
+	return d.window
+}
+
+// GetRetryOffsets returns the retry offsets
+func (d *DiophantineStrategy) GetRetryOffsets() []time.Duration {
+	return d.retryOffsets
+}

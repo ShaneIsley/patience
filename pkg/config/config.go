@@ -21,6 +21,12 @@ type Config struct {
 	SuccessPattern  string        `mapstructure:"success_pattern"`
 	FailurePattern  string        `mapstructure:"failure_pattern"`
 	CaseInsensitive bool          `mapstructure:"case_insensitive"`
+
+	// Daemon configuration
+	DaemonEnabled   bool          `mapstructure:"daemon_enabled"`
+	DaemonSocket    string        `mapstructure:"daemon_socket"`
+	DaemonTimeout   time.Duration `mapstructure:"daemon_timeout"`
+	DaemonAutoStart bool          `mapstructure:"daemon_auto_start"`
 }
 
 // ValidationError represents a configuration validation error
@@ -108,15 +114,19 @@ func LoadWithEnvironment() (*Config, error) {
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"PATIENCE_ATTEMPTS":         "attempts",
-		"PATIENCE_DELAY":            "delay",
-		"PATIENCE_TIMEOUT":          "timeout",
-		"PATIENCE_BACKOFF":          "backoff",
-		"PATIENCE_MAX_DELAY":        "max_delay",
-		"PATIENCE_MULTIPLIER":       "multiplier",
-		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
-		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
-		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":          "attempts",
+		"PATIENCE_DELAY":             "delay",
+		"PATIENCE_TIMEOUT":           "timeout",
+		"PATIENCE_BACKOFF":           "backoff",
+		"PATIENCE_MAX_DELAY":         "max_delay",
+		"PATIENCE_MULTIPLIER":        "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":   "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":   "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE":  "case_insensitive",
+		"PATIENCE_DAEMON_ENABLED":    "daemon_enabled",
+		"PATIENCE_DAEMON_SOCKET":     "daemon_socket",
+		"PATIENCE_DAEMON_TIMEOUT":    "daemon_timeout",
+		"PATIENCE_DAEMON_AUTO_START": "daemon_auto_start",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -173,15 +183,19 @@ func LoadWithPrecedence(configFile string, flagConfig *Config, debug bool) (*Con
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"PATIENCE_ATTEMPTS":         "attempts",
-		"PATIENCE_DELAY":            "delay",
-		"PATIENCE_TIMEOUT":          "timeout",
-		"PATIENCE_BACKOFF":          "backoff",
-		"PATIENCE_MAX_DELAY":        "max_delay",
-		"PATIENCE_MULTIPLIER":       "multiplier",
-		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
-		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
-		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":          "attempts",
+		"PATIENCE_DELAY":             "delay",
+		"PATIENCE_TIMEOUT":           "timeout",
+		"PATIENCE_BACKOFF":           "backoff",
+		"PATIENCE_MAX_DELAY":         "max_delay",
+		"PATIENCE_MULTIPLIER":        "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":   "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":   "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE":  "case_insensitive",
+		"PATIENCE_DAEMON_ENABLED":    "daemon_enabled",
+		"PATIENCE_DAEMON_SOCKET":     "daemon_socket",
+		"PATIENCE_DAEMON_TIMEOUT":    "daemon_timeout",
+		"PATIENCE_DAEMON_AUTO_START": "daemon_auto_start",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -250,15 +264,19 @@ func LoadWithPrecedenceAndExplicitFlags(configFile string, flagConfig *Config, e
 
 	// Map environment variables to config keys
 	envMappings := map[string]string{
-		"PATIENCE_ATTEMPTS":         "attempts",
-		"PATIENCE_DELAY":            "delay",
-		"PATIENCE_TIMEOUT":          "timeout",
-		"PATIENCE_BACKOFF":          "backoff",
-		"PATIENCE_MAX_DELAY":        "max_delay",
-		"PATIENCE_MULTIPLIER":       "multiplier",
-		"PATIENCE_SUCCESS_PATTERN":  "success_pattern",
-		"PATIENCE_FAILURE_PATTERN":  "failure_pattern",
-		"PATIENCE_CASE_INSENSITIVE": "case_insensitive",
+		"PATIENCE_ATTEMPTS":          "attempts",
+		"PATIENCE_DELAY":             "delay",
+		"PATIENCE_TIMEOUT":           "timeout",
+		"PATIENCE_BACKOFF":           "backoff",
+		"PATIENCE_MAX_DELAY":         "max_delay",
+		"PATIENCE_MULTIPLIER":        "multiplier",
+		"PATIENCE_SUCCESS_PATTERN":   "success_pattern",
+		"PATIENCE_FAILURE_PATTERN":   "failure_pattern",
+		"PATIENCE_CASE_INSENSITIVE":  "case_insensitive",
+		"PATIENCE_DAEMON_ENABLED":    "daemon_enabled",
+		"PATIENCE_DAEMON_SOCKET":     "daemon_socket",
+		"PATIENCE_DAEMON_TIMEOUT":    "daemon_timeout",
+		"PATIENCE_DAEMON_AUTO_START": "daemon_auto_start",
 	}
 
 	for envVar, configKey := range envMappings {
@@ -312,6 +330,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("success_pattern", "")
 	v.SetDefault("failure_pattern", "")
 	v.SetDefault("case_insensitive", false)
+
+	// Daemon defaults
+	v.SetDefault("daemon_enabled", false)
+	v.SetDefault("daemon_socket", "/tmp/patience-daemon.sock")
+	v.SetDefault("daemon_timeout", 5*time.Second)
+	v.SetDefault("daemon_auto_start", true)
 }
 
 // MergeWithFlags merges the base configuration with flag overrides
@@ -344,6 +368,12 @@ func (c *Config) MergeWithFlags(flags *Config) *Config {
 	}
 	if flags.FailurePattern != "" {
 		result.FailurePattern = flags.FailurePattern
+	}
+	if flags.DaemonSocket != "" {
+		result.DaemonSocket = flags.DaemonSocket
+	}
+	if flags.DaemonTimeout != 0 {
+		result.DaemonTimeout = flags.DaemonTimeout
 	}
 	// Boolean values are handled by the caller
 
@@ -382,6 +412,18 @@ func (c *Config) MergeWithExplicitFlags(flags *Config, explicitFields map[string
 	}
 	if explicitFields["case_insensitive"] {
 		result.CaseInsensitive = flags.CaseInsensitive
+	}
+	if explicitFields["daemon_enabled"] {
+		result.DaemonEnabled = flags.DaemonEnabled
+	}
+	if explicitFields["daemon_socket"] {
+		result.DaemonSocket = flags.DaemonSocket
+	}
+	if explicitFields["daemon_timeout"] {
+		result.DaemonTimeout = flags.DaemonTimeout
+	}
+	if explicitFields["daemon_auto_start"] {
+		result.DaemonAutoStart = flags.DaemonAutoStart
 	}
 
 	return &result
@@ -599,6 +641,14 @@ func recordDefaults(debug *ConfigDebugInfo) {
 	debug.Values["failure_pattern"] = ""
 	debug.Sources["case_insensitive"] = SourceDefault
 	debug.Values["case_insensitive"] = false
+	debug.Sources["daemon_enabled"] = SourceDefault
+	debug.Values["daemon_enabled"] = false
+	debug.Sources["daemon_socket"] = SourceDefault
+	debug.Values["daemon_socket"] = "/tmp/patience-daemon.sock"
+	debug.Sources["daemon_timeout"] = SourceDefault
+	debug.Values["daemon_timeout"] = 5 * time.Second
+	debug.Sources["daemon_auto_start"] = SourceDefault
+	debug.Values["daemon_auto_start"] = true
 }
 
 // recordConfigFile records config file values in debug info
@@ -606,6 +656,7 @@ func recordConfigFile(debug *ConfigDebugInfo, v *viper.Viper) {
 	configKeys := []string{
 		"attempts", "delay", "timeout", "backoff", "max_delay",
 		"multiplier", "success_pattern", "failure_pattern", "case_insensitive",
+		"daemon_enabled", "daemon_socket", "daemon_timeout", "daemon_auto_start",
 	}
 
 	for _, key := range configKeys {
@@ -660,6 +711,14 @@ func recordFlags(debug *ConfigDebugInfo, flags *Config) {
 		debug.Sources["failure_pattern"] = SourceCLIFlag
 		debug.Values["failure_pattern"] = flags.FailurePattern
 	}
+	if flags.DaemonSocket != "" {
+		debug.Sources["daemon_socket"] = SourceCLIFlag
+		debug.Values["daemon_socket"] = flags.DaemonSocket
+	}
+	if flags.DaemonTimeout != 0 {
+		debug.Sources["daemon_timeout"] = SourceCLIFlag
+		debug.Values["daemon_timeout"] = flags.DaemonTimeout
+	}
 }
 
 // recordExplicitFlags records CLI flag values that were explicitly set in debug info
@@ -700,6 +759,22 @@ func recordExplicitFlags(debug *ConfigDebugInfo, flags *Config, explicitFields m
 		debug.Sources["case_insensitive"] = SourceCLIFlag
 		debug.Values["case_insensitive"] = flags.CaseInsensitive
 	}
+	if explicitFields["daemon_enabled"] {
+		debug.Sources["daemon_enabled"] = SourceCLIFlag
+		debug.Values["daemon_enabled"] = flags.DaemonEnabled
+	}
+	if explicitFields["daemon_socket"] {
+		debug.Sources["daemon_socket"] = SourceCLIFlag
+		debug.Values["daemon_socket"] = flags.DaemonSocket
+	}
+	if explicitFields["daemon_timeout"] {
+		debug.Sources["daemon_timeout"] = SourceCLIFlag
+		debug.Values["daemon_timeout"] = flags.DaemonTimeout
+	}
+	if explicitFields["daemon_auto_start"] {
+		debug.Sources["daemon_auto_start"] = SourceCLIFlag
+		debug.Values["daemon_auto_start"] = flags.DaemonAutoStart
+	}
 }
 
 // PrintDebugInfo prints configuration debug information
@@ -710,6 +785,7 @@ func (debug *ConfigDebugInfo) PrintDebugInfo() {
 	configKeys := []string{
 		"attempts", "delay", "timeout", "backoff", "max_delay",
 		"multiplier", "success_pattern", "failure_pattern", "case_insensitive",
+		"daemon_enabled", "daemon_socket", "daemon_timeout", "daemon_auto_start",
 	}
 
 	for _, key := range configKeys {

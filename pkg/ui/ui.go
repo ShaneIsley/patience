@@ -182,3 +182,19 @@ func (s *RunStats) Finalize(success bool, finalReason string) {
 	s.FinalReason = finalReason
 	s.TotalDuration = time.Since(s.startTime)
 }
+
+// ShowWarning displays a warning message
+func (r *Reporter) ShowWarning(message string) {
+	if r.quiet {
+		return
+	}
+	fmt.Fprintf(r.writer, "[warning] %s\n", message)
+}
+
+// ShowWaiting displays a waiting message with duration
+func (r *Reporter) ShowWaiting(duration time.Duration, message string) {
+	if r.quiet {
+		return
+	}
+	fmt.Fprintf(r.writer, "[waiting] %s (waiting %s)\n", message, r.formatDuration(duration))
+}
