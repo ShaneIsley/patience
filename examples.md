@@ -552,6 +552,27 @@ patience adaptive --attempts 15 --learning-rate 0.05 --memory-window 200 -- data
 - Adapts to changing service conditions
 - Machine learning-inspired approach
 
+### Diophantine Strategy
+Use when you want proactive rate limit compliance and optimal throughput:
+
+```bash
+# Proactive scheduling for rate-limited APIs (10 requests per hour)
+patience diophantine --rate-limit 10 --window 1h --retry-offsets 0,10m,30m -- api-task
+
+# High-frequency operations with tight rate limits (5 requests per minute)
+patience diophantine --rate-limit 5 --window 1m --retry-offsets 0,10s,30s -- frequent-api-call
+
+# Batch processing with predictable retry patterns
+patience diophantine --rate-limit 100 --window 15m --retry-offsets 0,2m,5m,10m -- batch-operation
+```
+
+**Why diophantine strategy?**
+- Prevents rate limit violations before they occur
+- Maximizes throughput within rate limit constraints
+- Uses mathematical modeling (Diophantine inequalities) for precision
+- Ideal for controlled environments where you schedule tasks
+- Proactive rather than reactive approach to rate limiting
+
 ## Quick Reference
 
 ### Most Common Patterns

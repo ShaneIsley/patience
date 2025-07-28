@@ -14,7 +14,7 @@ We've all been there – a deployment script fails because of a temporary networ
 
 - **Strategy-based interface** – Choose the right backoff strategy for your use case
 - **HTTP-aware patience** – Respects `Retry-After` headers and server timing hints
-- **9 backoff strategies** – From simple fixed delays to machine learning adaptive strategies
+- **10 backoff strategies** – From simple fixed delays to machine learning adaptive strategies
 - **Intelligent pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
@@ -624,7 +624,7 @@ patience exponential --attempts 3 --base-delay 2s --timeout 30s -- command
 
 1. **HTTP Intelligence**: Automatically respects `Retry-After` headers
 2. **Pattern Matching**: Success/failure based on output, not just exit codes
-3. **Strategy Variety**: 9 different backoff strategies for different use cases
+3. **Strategy Variety**: 10 different backoff strategies for different use cases
 4. **Real-time Feedback**: Clear progress reporting during retries
 5. **Configuration**: Persistent settings via config files
 6. **Metrics**: Optional daemon for long-term retry analytics
