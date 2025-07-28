@@ -4,7 +4,7 @@
 set -e
 
 BINARY="../patience"
-RESULTS_DIR="../performance_results"
+RESULTS_DIR="../tmp/performance_results"
 mkdir -p "$RESULTS_DIR"
 
 echo "=== Phase 6: Final Optimization & Comparative Benchmarking ==="

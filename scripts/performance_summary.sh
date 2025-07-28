@@ -3,7 +3,7 @@
 # Performance evaluation summary generator
 set -e
 
-RESULTS_DIR="../performance_results"
+RESULTS_DIR="../tmp/performance_results"
 SUMMARY_FILE="$RESULTS_DIR/PERFORMANCE_EVALUATION_SUMMARY.md"
 
 echo "=== Generating Performance Evaluation Summary ==="
