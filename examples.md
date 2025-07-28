@@ -2,6 +2,65 @@
 
 This guide shows the most common, practical uses of `patience` with the new strategy-based interface. Each strategy is designed for specific use cases and scenarios.
 
+## Diophantine Strategy Examples
+
+The Diophantine strategy provides mathematical proactive rate limiting that prevents rate limit violations before they occur, with optional multi-instance coordination.
+
+### Basic Proactive Rate Limiting
+
+```bash
+# Prevent rate limit violations for GitHub API (5000 requests/hour)
+patience diophantine --rate-limit 5000 --window 1h -- curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
+
+# Twitter API v2 rate limiting (300 requests/15min)
+patience diophantine --rate-limit 300 --window 15m -- curl -H "Authorization: Bearer $TWITTER_TOKEN" https://api.twitter.com/2/tweets
+
+# AWS API with conservative rate limiting
+patience diophantine --rate-limit 100 --window 1h --retry-offsets "2s,10s,30s" -- aws s3 ls s3://my-bucket
+
+# Using abbreviation for brevity
+patience dio -l 1000 -w 1h -- api-call.sh
+```
+
+### Multi-Instance Coordination
+
+```bash
+# Coordinate across multiple CI/CD runners
+patience diophantine --daemon --resource-id "github-api" --rate-limit 5000 --window 1h -- \
+  curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/owner/repo
+
+# Shared database API across microservices
+patience diophantine --daemon --resource-id "db-api" --rate-limit 500 --window 1h -- \
+  curl -X POST -d '{"query":"SELECT * FROM users"}' https://db-api.internal.com/query
+
+# Production deployment with custom daemon socket
+patience diophantine --daemon --daemon-address "/var/run/patience/daemon.sock" \
+  --resource-id "production-api" --rate-limit 1000 --window 1h -- production-deploy.sh
+
+# Kubernetes pod coordination
+patience diophantine --daemon --resource-id "k8s-api-$(kubectl config current-context)" \
+  --rate-limit 200 --window 1h -- kubectl apply -f deployment.yaml
+```
+
+### Enterprise Use Cases
+
+```bash
+# Salesforce API with strict rate limits (15,000 requests/24h)
+patience diophantine --daemon --resource-id "salesforce-api" \
+  --rate-limit 15000 --window 24h --retry-offsets "5s,30s,2m" -- \
+  curl -H "Authorization: Bearer $SF_TOKEN" https://your-instance.salesforce.com/services/data/v52.0/sobjects
+
+# Stripe API coordination across payment services
+patience diophantine --daemon --resource-id "stripe-api" \
+  --rate-limit 100 --window 1s --retry-offsets "1s,3s,10s" -- \
+  curl -u $STRIPE_SECRET_KEY: https://api.stripe.com/v1/charges
+
+# Docker Hub API for CI/CD systems
+patience diophantine --daemon --resource-id "dockerhub-api" \
+  --rate-limit 200 --window 6h -- \
+  curl -H "Authorization: JWT $DOCKERHUB_TOKEN" https://hub.docker.com/v2/repositories/
+```
+
 ## HTTP-Aware Strategy Examples
 
 The HTTP-aware strategy is patience's flagship feature - it intelligently parses server responses for optimal retry timing.

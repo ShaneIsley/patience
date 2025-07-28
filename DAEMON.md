@@ -7,6 +7,8 @@ The patience daemon (`patienced`) is a background service that collects and aggr
 
 ## Features
 
+- **Unix Socket Server**: Production-grade Unix domain socket server with JSON protocol
+- **Multi-Instance Coordination**: Enables Diophantine strategy coordination across multiple patience instances
 - **Metrics Collection**: Receives metrics from patience CLI instances via Unix domain socket
 - **Data Aggregation**: Aggregates metrics with configurable retention policies
 - **HTTP API**: RESTful API for accessing metrics and statistics
@@ -14,6 +16,7 @@ The patience daemon (`patienced`) is a background service that collects and aggr
 - **Performance Monitoring**: Runtime performance metrics and profiling endpoints
 - **System Integration**: Service files for systemd and launchd
 - **Graceful Shutdown**: Proper cleanup and signal handling
+- **Protocol Versioning**: Supports versioned JSON protocol for backward compatibility
 
 ## Installation
 
@@ -263,7 +266,57 @@ The dashboard provides:
 
 ## Integration with patience CLI
 
-The patience CLI automatically sends metrics to the daemon when available. No additional configuration is required - the CLI will attempt to connect to the daemon socket and gracefully continue if the daemon is not running.
+The patience CLI automatically sends metrics to the daemon when available. The daemon also provides coordination services for the Diophantine strategy, enabling multi-instance rate limiting.
+
+### Diophantine Strategy Coordination
+
+When using the `--daemon` flag with the Diophantine strategy, patience instances coordinate through the daemon to prevent rate limit violations:
+
+```bash
+# Enable daemon coordination for shared rate limiting
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 100 --window 1h -- curl https://api.example.com
+```
+
+The daemon handles:
+- **Schedule Requests**: Determines if a request can be scheduled based on current rate limit usage
+- **Request Registration**: Tracks planned requests to prevent over-scheduling
+- **Resource Coordination**: Manages rate limits across different resource IDs
+- **Graceful Fallback**: Continues operation if daemon is unavailable
+
+### Protocol Communication
+
+The daemon uses a JSON-based line protocol over Unix sockets:
+
+#### Handshake
+```json
+{"type": "handshake", "version": "1.0", "client": "patience-cli"}
+```
+
+#### Schedule Request
+```json
+{
+  "type": "schedule_request",
+  "resource_id": "api-endpoint",
+  "rate_limit": 100,
+  "window": "1h",
+  "request_time": "2025-01-01T12:00:00Z"
+}
+```
+
+#### Register Request
+```json
+{
+  "type": "register_request",
+  "requests": [
+    {
+      "id": "req-123",
+      "resource_id": "api-endpoint", 
+      "scheduled_at": "2025-01-01T12:01:00Z",
+      "expires_at": "2025-01-01T13:00:00Z"
+    }
+  ]
+}
+```
 
 ### Metrics Sent
 
@@ -275,6 +328,7 @@ For each patience operation, the following metrics are sent:
 - Number of attempts
 - Individual attempt details (duration, exit code, success)
 - Timestamp
+- Rate limiting information (for Diophantine strategy)
 
 ## Performance and Scaling
 
@@ -367,11 +421,14 @@ patienced -enable-profiling
 
 ## Security Considerations
 
-- **Unix socket permissions**: Ensure appropriate access controls
+- **Unix socket permissions**: Socket created with 0600 permissions for security
+- **Protocol validation**: All JSON messages are validated before processing
+- **Connection limits**: Configurable maximum concurrent connections
 - **HTTP API**: Consider firewall rules for HTTP port
 - **User privileges**: Run daemon as dedicated user (not root)
 - **Profiling endpoints**: Only enable in development/debugging
 - **Log sensitivity**: Logs may contain command arguments
+- **Resource isolation**: Rate limiting resources are isolated by resource ID
 
 ## Maintenance
 

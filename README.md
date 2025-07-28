@@ -14,11 +14,13 @@ We've all been there – a deployment script fails because of a temporary networ
 
 - **Strategy-based interface** – Choose the right backoff strategy for your use case
 - **HTTP-aware patience** – Respects `Retry-After` headers and server timing hints
-- **10 backoff strategies** – From simple fixed delays to machine learning adaptive strategies
+- **11 backoff strategies** – From simple fixed delays to mathematical proactive rate limiting
+- **Diophantine strategy** – Mathematical proactive rate limiting with multi-instance coordination
 - **Intelligent pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
 - **Zero dependencies** – Single binary that works anywhere
+- **Unix Socket Daemon** – Real daemon server with JSON protocol for multi-instance coordination
 - **Metrics Daemon (Optional)** – Collect and visualize patience metrics with the [`patienced` daemon](DAEMON.md)
 
 ## Documentation
@@ -51,6 +53,9 @@ go build -o patience ./cmd/patience
 # HTTP-aware retry (respects server timing)
 ./patience http-aware -- curl -i https://httpbin.org/delay/2
 
+# Mathematical proactive rate limiting (prevents rate limit violations)
+./patience diophantine --rate-limit 100 --window 1h -- curl https://api.example.com
+
 # Success! Your command now has patience
 ```
 
@@ -74,6 +79,12 @@ patience exponential --success-pattern "deployment successful" -- kubectl apply 
 **Flaky Tests:**
 ```bash
 patience fixed --attempts 5 --delay 1s -- npm test
+```
+
+**Multi-Instance Rate Limiting:**
+```bash
+# Coordinate across multiple instances to prevent rate limit violations
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://api.example.com
 ```
 
 ### 4. Next Steps
@@ -141,6 +152,7 @@ patience exp -b 1s -x 2.0 -- curl https://api.stripe.com
 | `fibonacci` | `fib` | Fibonacci sequence delays | Moderate growth, gradual recovery |
 | `polynomial` | `poly` | Polynomial growth with configurable exponent | Customizable growth patterns |
 | `adaptive` | `adapt` | Machine learning adaptive strategy | Commands with changing patterns |
+| `diophantine` | `dio` | Mathematical proactive rate limiting | Multi-instance coordination, enterprise APIs |
 
 ### Common Options (Available for All Strategies)
 
@@ -336,6 +348,23 @@ patience adaptive --learning-rate 0.5 --fallback fixed -- dynamic-api
 patience adaptive --learning-rate 0.05 --memory-window 200 -- database-operation
 ```
 
+#### Diophantine Strategy (`diophantine`, `dio`)
+Mathematical proactive rate limiting using Diophantine inequalities to prevent rate limit violations before they occur.
+
+```bash
+# Basic proactive rate limiting
+patience diophantine --rate-limit 100 --window 1h -- curl https://api.example.com
+
+# Multi-instance coordination via daemon
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://api.example.com
+
+# Custom retry patterns within mathematical constraints
+patience diophantine --rate-limit 1000 --window 1h --retry-offsets "1s,5s,15s" -- api-call.sh
+
+# Enterprise deployment with daemon coordination
+patience diophantine --daemon --daemon-address "/tmp/patience-daemon.sock" --resource-id "production-api" --rate-limit 500 --window 1h -- production-script.sh
+```
+
 ### Strategy Comparison
 
 | Strategy | Growth Pattern | Use Case | Example Delays (1s base) |
@@ -349,6 +378,7 @@ patience adaptive --learning-rate 0.05 --memory-window 200 -- database-operation
 | `fibonacci` | Fibonacci | Moderate growth | 1s, 1s, 2s, 3s, 5s, 8s |
 | `polynomial` | Polynomial | Customizable growth | 1s, 4s, 9s, 16s (exponent=2.0) |
 | `adaptive` | Learning-based | Changing patterns | Adapts based on success/failure |
+| `diophantine` | Mathematical | Proactive rate limiting | Calculated to prevent violations |
 
 ## Configuration
 
@@ -494,6 +524,16 @@ This shows the source of each configuration value (CLI flag, environment variabl
 | `--learning-rate` | `-r` | `0.1` | Learning rate for adaptation (0.01-1.0) |
 | `--memory-window` | `-w` | `50` | Number of recent outcomes to remember (5-10000) |
 | `--fallback` | `-f` | `exponential` | Fallback strategy when learning data insufficient |
+
+#### Diophantine Strategy
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--rate-limit` | `-l` | `100` | Maximum requests allowed in the time window |
+| `--window` | `-w` | `1h` | Time window for rate limiting (e.g., 1h, 30m, 60s) |
+| `--retry-offsets` | `-o` | `1s,5s,15s` | Comma-separated retry timing offsets |
+| `--daemon` | `-d` | `false` | Enable daemon coordination for multi-instance rate limiting |
+| `--daemon-address` | `-a` | `/tmp/patience-daemon.sock` | Unix socket path for daemon communication |
+| `--resource-id` | `-r` | | Resource identifier for shared rate limiting (derived from command if not specified) |
 
 ## How It Works
 
