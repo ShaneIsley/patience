@@ -21,6 +21,66 @@ We've all been there – a deployment script fails because of a temporary networ
 - **Zero dependencies** – Single binary that works anywhere
 - **Metrics Daemon (Optional)** – Collect and visualize patience metrics with the [`patienced` daemon](DAEMON.md)
 
+## Documentation
+
+📚 **Complete Documentation Suite:**
+- **[Quick Start](#quick-start)** - Get running in 2 minutes
+- **[Migration Guide](#migration-guide)** - Switch from other retry tools
+- **[examples.md](examples.md)** - Real-world usage scenarios and patterns
+- **[Architecture.md](Architecture.md)** - System design and technical decisions
+- **[DAEMON.md](DAEMON.md)** - Optional metrics collection and monitoring
+- **[Development-Guidelines.md](Development-Guidelines.md)** - TDD process and contribution standards
+- **[DOCUMENTATION.md](DOCUMENTATION.md)** - Documentation maintenance and standards
+
+## Quick Start
+
+Get up and running with patience in under 2 minutes:
+
+### 1. Install
+```bash
+git clone https://github.com/shaneisley/patience.git
+cd patience
+go build -o patience ./cmd/patience
+```
+
+### 2. Try It Out
+```bash
+# Basic retry with exponential backoff
+./patience exponential -- curl https://httpbin.org/status/500
+
+# HTTP-aware retry (respects server timing)
+./patience http-aware -- curl -i https://httpbin.org/delay/2
+
+# Success! Your command now has patience
+```
+
+### 3. Common Use Cases
+
+**API Calls with Rate Limiting:**
+```bash
+patience http-aware -- curl -H "Authorization: Bearer $TOKEN" https://api.github.com/user
+```
+
+**Database Connections:**
+```bash
+patience linear --increment 2s --max-delay 30s -- psql -h db.example.com -c "SELECT 1"
+```
+
+**Deployment Scripts:**
+```bash
+patience exponential --success-pattern "deployment successful" -- kubectl apply -f app.yaml
+```
+
+**Flaky Tests:**
+```bash
+patience fixed --attempts 5 --delay 1s -- npm test
+```
+
+### 4. Next Steps
+- See [Strategy Details](#strategy-details) for choosing the right backoff strategy
+- Check [Pattern Matching](#pattern-matching) for advanced success/failure detection
+- Explore [Configuration](#configuration) for persistent settings
+
 ## Installation
 
 ### From Source
@@ -476,6 +536,99 @@ patience http-aware --attempts 5 -- curl https://api.example.com
 # Output: "✅ Command succeeded after 1 attempt" (attempts 2-5 never run)
 ```
 
+## Migration Guide
+
+Switching from other retry tools? Here's how to migrate common patterns to patience:
+
+### From `retry` (bash script)
+
+**Old:**
+```bash
+retry -t 5 -d 2 curl https://api.example.com
+```
+
+**New:**
+```bash
+patience fixed --attempts 5 --delay 2s -- curl https://api.example.com
+```
+
+### From `retries` (Python)
+
+**Old:**
+```python
+@retries(max_attempts=3, delay=1, backoff=2)
+def api_call():
+    return requests.get('https://api.example.com')
+```
+
+**New:**
+```bash
+patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl https://api.example.com
+```
+
+### From `exponential-backoff` (npm)
+
+**Old:**
+```bash
+exponential-backoff --initial-delay 1000 --max-delay 30000 -- curl api.com
+```
+
+**New:**
+```bash
+patience exponential --base-delay 1s --max-delay 30s -- curl api.com
+```
+
+### From `while` loops
+
+**Old:**
+```bash
+while ! curl https://api.example.com; do
+  echo "Retrying in 5 seconds..."
+  sleep 5
+done
+```
+
+**New:**
+```bash
+patience fixed --delay 5s -- curl https://api.example.com
+```
+
+### From AWS CLI retry
+
+**Old:**
+```bash
+aws s3 cp file.txt s3://bucket/ --cli-read-timeout 0 --cli-connect-timeout 60
+```
+
+**New:**
+```bash
+patience exponential --timeout 60s -- aws s3 cp file.txt s3://bucket/
+```
+
+### From `timeout` + manual retry
+
+**Old:**
+```bash
+for i in {1..3}; do
+  timeout 30 command && break
+  sleep $((i * 2))
+done
+```
+
+**New:**
+```bash
+patience exponential --attempts 3 --base-delay 2s --timeout 30s -- command
+```
+
+### Key Advantages of patience
+
+1. **HTTP Intelligence**: Automatically respects `Retry-After` headers
+2. **Pattern Matching**: Success/failure based on output, not just exit codes
+3. **Strategy Variety**: 9 different backoff strategies for different use cases
+4. **Real-time Feedback**: Clear progress reporting during retries
+5. **Configuration**: Persistent settings via config files
+6. **Metrics**: Optional daemon for long-term retry analytics
+
 ## Examples
 
 Check out [examples.md](examples.md) for real-world usage scenarios and common patterns.
@@ -540,6 +693,17 @@ We welcome contributions! The project follows conventional commit messages and m
 - Submit pull requests with tests
 - Improve documentation
 - Share your use cases
+
+**Documentation:**
+- [Development Guidelines](Development-Guidelines.md) - TDD process, code style, and contribution standards
+- [Architecture](Architecture.md) - System design and technical decisions
+- [Documentation Maintenance](DOCUMENTATION.md) - How to maintain and improve documentation
+- [Daemon Setup](DAEMON.md) - Optional metrics collection and monitoring
+
+**Getting Started:**
+- See [Development](#development) section for setup instructions
+- Check [examples.md](examples.md) for real-world usage patterns
+- Review existing tests for contribution examples
 
 ### Contact
 

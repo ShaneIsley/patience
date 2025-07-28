@@ -22,6 +22,54 @@ The system consists of three main components:
 2. **HTTP-Aware Intelligence:** Built-in HTTP response parsing that extracts retry timing from server responses (`Retry-After` headers, JSON fields).
 3. **patienced Daemon (Optional):** A background process that collects, aggregates, and exposes long-term metrics. Not required for core functionality.
 
+### **System Architecture Diagram**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              patience System                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────────┐ │
+│  │   User Command  │    │   patience CLI   │    │   Target Command       │ │
+│  │                 │───▶│                  │───▶│                         │ │
+│  │ patience exp    │    │ ┌──────────────┐ │    │ curl api.example.com    │ │
+│  │ --attempts 5    │    │ │   Strategy   │ │    │                         │ │
+│  │ -- curl api.com │    │ │   Selection  │ │    │ ┌─────────────────────┐ │ │
+│  └─────────────────┘    │ └──────────────┘ │    │ │    HTTP Response    │ │ │
+│                         │ ┌──────────────┐ │    │ │                     │ │ │
+│                         │ │   Executor   │ │    │ │ Retry-After: 30     │ │ │
+│                         │ │   Engine     │ │◀───│ │ {"retry_after": 30} │ │ │
+│                         │ └──────────────┘ │    │ └─────────────────────┘ │ │
+│                         │ ┌──────────────┐ │    └─────────────────────────┘ │
+│                         │ │ HTTP-Aware   │ │                                │
+│                         │ │ Intelligence │ │                                │
+│                         │ └──────────────┘ │                                │
+│                         └──────────────────┘                                │
+│                                   │                                         │
+│                                   │ metrics (optional)                      │
+│                                   ▼                                         │
+│                         ┌──────────────────┐                                │
+│                         │  patienced       │                                │
+│                         │  Daemon          │                                │
+│                         │ ┌──────────────┐ │                                │
+│                         │ │   Metrics    │ │                                │
+│                         │ │   Storage    │ │                                │
+│                         │ └──────────────┘ │                                │
+│                         │ ┌──────────────┐ │                                │
+│                         │ │   HTTP API   │ │                                │
+│                         │ │   Dashboard  │ │                                │
+│                         │ └──────────────┘ │                                │
+│                         └──────────────────┘                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Component Interactions:**
+1. **User** invokes patience with strategy and target command
+2. **CLI** selects appropriate backoff strategy and configures executor
+3. **Executor** runs target command and processes results
+4. **HTTP Intelligence** parses responses for retry timing hints
+5. **Daemon** (optional) collects metrics and provides monitoring dashboard
+
 ## **3\. patience CLI \- Detailed Architecture**
 
 The CLI uses a modern subcommand-based architecture where each backoff strategy is a dedicated subcommand with specialized configuration.
@@ -70,6 +118,111 @@ We chose subcommands over a flag-based approach for several key reasons:
 8. **Termination:** Loop terminates on success or max attempts reached
 9. **Status Reporting:** Real-time attempt status and final summary via UI reporter
 10. **Metrics Dispatch (Async):** Optional fire-and-forget metrics to daemon
+
+#### **Execution Flow Diagram**
+
+```
+┌─────────────────┐
+│ User Command    │
+│ patience exp    │
+│ --attempts 3    │
+│ -- curl api.com │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Parse Config    │
+│ & Initialize    │
+│ Strategy        │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Create Executor │
+│ with Strategy   │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Start Attempt   │
+│ Loop (1 to N)   │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Execute Target  │
+│ Command         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Capture Output  │
+│ & Exit Code     │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Process HTTP    │
+│ Response        │
+│ (if applicable) │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│ Check Success   │
+│ Conditions      │
+└─────────┬───────┘
+          │
+          ▼
+     ┌────────────┐
+     │ Success?   │
+     └─────┬──────┘
+           │
+    ┌──────▼──────┐
+    │ Yes         │ No
+    │             │
+    ▼             ▼
+┌─────────┐  ┌─────────────────┐
+│ Report  │  │ Max Attempts    │
+│ Success │  │ Reached?        │
+│ & Exit  │  └─────────┬───────┘
+└─────────┘            │
+                ┌──────▼──────┐
+                │ Yes         │ No
+                │             │
+                ▼             ▼
+           ┌─────────┐  ┌─────────────────┐
+           │ Report  │  │ Calculate Delay │
+           │ Failure │  │ using Strategy  │
+           │ & Exit  │  └─────────┬───────┘
+           └─────────┘            │
+                                  ▼
+                         ┌─────────────────┐
+                         │ Wait for Delay  │
+                         │ Duration        │
+                         └─────────┬───────┘
+                                   │
+                                   ▼
+                         ┌─────────────────┐
+                         │ Record Outcome  │
+                         │ (Adaptive)      │
+                         └─────────┬───────┘
+                                   │
+                                   ▼
+                         ┌─────────────────┐
+                         │ Send Metrics    │
+                         │ (Optional)      │
+                         └─────────┬───────┘
+                                   │
+                                   │
+                    ┌──────────────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │ Next Attempt    │
+          │ (Loop Back)     │
+          └─────────────────┘
+```
 
 ### **3.2. Status and Output (Daemon Inactive)**
 
