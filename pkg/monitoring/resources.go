@@ -80,10 +80,8 @@ func (rm *ResourceMonitor) ForceGC(threshold float64) {
 		return
 	}
 
-	snapshot := rm.GetSnapshot()
-	if snapshot.AllocMB > threshold {
-		runtime.GC()
-	}
+	// Memory monitoring - removed manual GC call as per best practices
+	// Let Go's garbage collector handle memory management automatically
 }
 
 // GetMemoryGrowth calculates memory growth since baseline

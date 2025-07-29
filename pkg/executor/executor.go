@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -90,10 +89,9 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 	)
 
 	// Capture stdout and stderr while also forwarding to terminal
-	// Use limited buffers for large outputs (10MB limit each)
-	const maxBufferSize = 10 * 1024 * 1024 // 10MB limit
-	stdoutBuf := &limitedBuffer{limit: maxBufferSize}
-	stderrBuf := &limitedBuffer{limit: maxBufferSize}
+	// Use limited buffers for large outputs
+	stdoutBuf := &limitedBuffer{limit: DefaultMaxBufferSize}
+	stderrBuf := &limitedBuffer{limit: DefaultMaxBufferSize}
 	cmd.Stdout = io.MultiWriter(os.Stdout, stdoutBuf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderrBuf)
 
@@ -117,10 +115,7 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 	defer func() {
 		stdoutBuf.Reset()
 		stderrBuf.Reset()
-		// Force garbage collection for stress testing scenarios
-		if stdoutBuf.Len() > 1024*1024 || stderrBuf.Len() > 1024*1024 { // 1MB threshold
-			runtime.GC()
-		}
+		// Memory cleanup - removed manual GC call as per best practices
 	}()
 
 	if err != nil {
@@ -333,31 +328,132 @@ func (e *Executor) createPlannedRequests(resourceID string, baseTime time.Time, 
 }
 
 // Run executes the given command with retry logic and returns the result
+// coordinateDaemon handles Diophantine strategy coordination with daemon
+func (e *Executor) coordinateDaemon(strategy backoff.Strategy, command []string) error {
+	if diophantineStrategy, ok := strategy.(*backoff.DiophantineStrategy); ok {
+		return e.coordinateWithDaemon(diophantineStrategy, command)
+	}
+	return nil
+}
+
+// initializeExecution sets up stats, metrics, and variables for a run
+func (e *Executor) initializeExecution(command []string) (*ui.RunStats, []metrics.AttemptMetric, time.Time) {
+	stats := ui.NewRunStats()
+	var attemptMetrics []metrics.AttemptMetric
+	runStartTime := time.Now()
+	return stats, attemptMetrics, runStartTime
+}
+
+// processAttemptResult evaluates success conditions and determines if retry should stop
+func (e *Executor) processAttemptResult(output CommandOutput, attempt int) (conditions.Result, bool) {
+	var conditionResult conditions.Result
+	if e.Conditions != nil {
+		conditionResult = e.Conditions.CheckSuccess(output.ExitCode, output.Stdout, output.Stderr)
+	} else {
+		// Default behavior: success if exit code is 0
+		if output.ExitCode == 0 {
+			conditionResult = conditions.Result{
+				Success: true,
+				Reason:  "exit code 0",
+			}
+		} else {
+			conditionResult = conditions.Result{
+				Success: false,
+				Reason:  fmt.Sprintf("exit code %d", output.ExitCode),
+			}
+		}
+	}
+
+	// Stop retrying if successful or if failure pattern matched
+	shouldStop := conditionResult.Success || conditionResult.Reason == "failure pattern matched"
+	return conditionResult, shouldStop
+}
+
+// recordStrategyOutcome updates adaptive strategies with attempt results
+func (e *Executor) recordStrategyOutcome(attempt int, success bool, duration time.Duration) {
+	if adaptiveStrategy, ok := e.BackoffStrategy.(interface {
+		RecordOutcome(delay time.Duration, success bool, latency time.Duration)
+	}); ok {
+		// Calculate the delay that was actually used for this attempt
+		var actualDelay time.Duration
+		if attempt > 1 && e.BackoffStrategy != nil {
+			actualDelay = e.BackoffStrategy.Delay(attempt - 1)
+		}
+		adaptiveStrategy.RecordOutcome(actualDelay, success, duration)
+	}
+
+	// Process command output for HTTP-aware strategies
+	if httpAware, ok := e.BackoffStrategy.(interface {
+		ProcessCommandOutput(stdout, stderr string, exitCode int)
+	}); ok {
+		// This would need the output, but we'll handle it in the main loop
+		_ = httpAware
+	}
+}
+
+// determineFinalReason calculates the final failure reason
+func (e *Executor) determineFinalReason(lastOutput CommandOutput, timedOut bool) string {
+	if timedOut {
+		if e.MaxAttempts == 1 {
+			return "timeout"
+		}
+		return "max retries reached (timeout)"
+	}
+
+	if e.Conditions != nil {
+		conditionResult := e.Conditions.CheckSuccess(lastOutput.ExitCode, lastOutput.Stdout, lastOutput.Stderr)
+		if e.MaxAttempts == 1 {
+			return conditionResult.Reason
+		}
+		return "max retries reached (" + conditionResult.Reason + ")"
+	}
+
+	// Default exit code based reasoning
+	exitReason := fmt.Sprintf("exit code %d", lastOutput.ExitCode)
+	if lastOutput.ExitCode == 0 {
+		exitReason = "exit code 0"
+	}
+
+	if e.MaxAttempts == 1 {
+		return exitReason
+	}
+	return "max retries reached (" + exitReason + ")"
+}
+
+// buildFinalResult constructs the final Result object
+func (e *Executor) buildFinalResult(success bool, attemptCount int, lastOutput CommandOutput, timedOut bool, reason string, stats *ui.RunStats, attemptMetrics []metrics.AttemptMetric, runStartTime time.Time, command []string, lastError error) *Result {
+	totalDuration := time.Since(runStartTime)
+	runMetrics := metrics.NewRunMetrics(command, success, totalDuration, attemptMetrics)
+
+	return &Result{
+		AttemptCount: attemptCount,
+		ExitCode:     lastOutput.ExitCode,
+		Success:      success,
+		TimedOut:     timedOut,
+		Reason:       reason,
+		Stats:        stats,
+		Metrics:      runMetrics,
+	}
+}
+
 func (e *Executor) Run(command []string) (*Result, error) {
 	// Handle Diophantine strategy coordination with daemon
-	if diophantineStrategy, ok := e.BackoffStrategy.(*backoff.DiophantineStrategy); ok {
-		err := e.coordinateWithDaemon(diophantineStrategy, command)
-		if err != nil {
-			return &Result{
-				Success:      false,
-				AttemptCount: 0,
-				ExitCode:     -1,
-				TimedOut:     false,
-				Reason:       fmt.Sprintf("daemon coordination failed: %v", err),
-			}, err
-		}
+	if err := e.coordinateDaemon(e.BackoffStrategy, command); err != nil {
+		return &Result{
+			Success:      false,
+			AttemptCount: 0,
+			ExitCode:     -1,
+			TimedOut:     false,
+			Reason:       fmt.Sprintf("daemon coordination failed: %v", err),
+		}, err
 	}
 
 	var lastOutput CommandOutput
 	var lastError error
 	var timedOut bool
 
-	// Initialize statistics tracking
-	stats := ui.NewRunStats()
-
-	// Initialize metrics tracking
-	var attemptMetrics []metrics.AttemptMetric
-	runStartTime := time.Now()
+	// Initialize execution tracking
+	stats, attemptMetrics, runStartTime := e.initializeExecution(command)
 
 	// Retry loop
 	for attempt := 1; attempt <= e.MaxAttempts; attempt++ {
@@ -384,24 +480,8 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			return nil, err
 		}
 
-		// Check success conditions (patterns first, then exit code)
-		var conditionResult conditions.Result
-		if e.Conditions != nil {
-			conditionResult = e.Conditions.CheckSuccess(output.ExitCode, output.Stdout, output.Stderr)
-		} else {
-			// Default behavior: success if exit code is 0
-			if output.ExitCode == 0 {
-				conditionResult = conditions.Result{
-					Success: true,
-					Reason:  "exit code 0",
-				}
-			} else {
-				conditionResult = conditions.Result{
-					Success: false,
-					Reason:  fmt.Sprintf("exit code %d", output.ExitCode),
-				}
-			}
-		}
+		// Check success conditions and determine if we should stop retrying
+		conditionResult, shouldStop := e.processAttemptResult(output, attempt)
 
 		// Record attempt result
 		stats.RecordAttemptEnd(conditionResult.Success, conditionResult.Reason)
@@ -413,17 +493,8 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			Success:  conditionResult.Success,
 		})
 
-		// Record outcome for adaptive strategies
-		if adaptiveStrategy, ok := e.BackoffStrategy.(interface {
-			RecordOutcome(delay time.Duration, success bool, latency time.Duration)
-		}); ok {
-			// Calculate the delay that was actually used for this attempt
-			var actualDelay time.Duration
-			if attempt > 1 && e.BackoffStrategy != nil {
-				actualDelay = e.BackoffStrategy.Delay(attempt - 1)
-			}
-			adaptiveStrategy.RecordOutcome(actualDelay, conditionResult.Success, attemptDuration)
-		}
+		// Record outcome for adaptive and HTTP-aware strategies
+		e.recordStrategyOutcome(attempt, conditionResult.Success, attemptDuration)
 
 		// Process command output for HTTP-aware strategies
 		if httpAware, ok := e.BackoffStrategy.(interface {
@@ -432,42 +503,10 @@ func (e *Executor) Run(command []string) (*Result, error) {
 			httpAware.ProcessCommandOutput(output.Stdout, output.Stderr, output.ExitCode)
 		}
 
-		// If command succeeded, return immediately
-		if conditionResult.Success {
-			stats.Finalize(true, conditionResult.Reason)
-
-			// Create run metrics
-			totalDuration := time.Since(runStartTime)
-			runMetrics := metrics.NewRunMetrics(command, true, totalDuration, attemptMetrics)
-
-			return &Result{
-				AttemptCount: attempt,
-				ExitCode:     output.ExitCode,
-				Success:      true,
-				TimedOut:     false,
-				Reason:       conditionResult.Reason,
-				Stats:        stats,
-				Metrics:      runMetrics,
-			}, nil
-		}
-
-		// If failure pattern matched, stop immediately (don't retry)
-		if conditionResult.Reason == "failure pattern matched" {
-			stats.Finalize(false, conditionResult.Reason)
-
-			// Create run metrics
-			totalDuration := time.Since(runStartTime)
-			runMetrics := metrics.NewRunMetrics(command, false, totalDuration, attemptMetrics)
-
-			return &Result{
-				AttemptCount: attempt,
-				ExitCode:     output.ExitCode,
-				Success:      false,
-				TimedOut:     false,
-				Reason:       conditionResult.Reason,
-				Stats:        stats,
-				Metrics:      runMetrics,
-			}, nil
+		// If we should stop retrying (success or failure pattern matched)
+		if shouldStop {
+			stats.Finalize(conditionResult.Success, conditionResult.Reason)
+			return e.buildFinalResult(conditionResult.Success, attempt, output, timedOut, conditionResult.Reason, stats, attemptMetrics, runStartTime, command, lastError), nil
 		}
 
 		// If this was the last attempt, break out of loop
@@ -503,50 +542,9 @@ func (e *Executor) Run(command []string) (*Result, error) {
 		}
 	}
 
-	// All attempts failed
-	var finalReason string
-	if timedOut {
-		if e.MaxAttempts == 1 {
-			finalReason = "timeout"
-		} else {
-			finalReason = "max retries reached (timeout)"
-		}
-	} else if e.Conditions != nil {
-		conditionResult := e.Conditions.CheckSuccess(lastOutput.ExitCode, lastOutput.Stdout, lastOutput.Stderr)
-		if e.MaxAttempts == 1 {
-			finalReason = conditionResult.Reason
-		} else {
-			finalReason = "max retries reached (" + conditionResult.Reason + ")"
-		}
-	} else {
-		if e.MaxAttempts == 1 {
-			if lastOutput.ExitCode == 0 {
-				finalReason = "exit code 0"
-			} else {
-				finalReason = fmt.Sprintf("exit code %d", lastOutput.ExitCode)
-			}
-		} else {
-			if lastOutput.ExitCode == 0 {
-				finalReason = "max retries reached (exit code 0)"
-			} else {
-				finalReason = fmt.Sprintf("max retries reached (exit code %d)", lastOutput.ExitCode)
-			}
-		}
-	}
-
+	// All attempts failed - determine final reason
+	finalReason := e.determineFinalReason(lastOutput, timedOut)
 	stats.Finalize(false, finalReason)
 
-	// Create run metrics for failed execution
-	totalDuration := time.Since(runStartTime)
-	runMetrics := metrics.NewRunMetrics(command, false, totalDuration, attemptMetrics)
-
-	return &Result{
-		AttemptCount: e.MaxAttempts,
-		ExitCode:     lastOutput.ExitCode,
-		Success:      false,
-		TimedOut:     timedOut,
-		Reason:       finalReason,
-		Stats:        stats,
-		Metrics:      runMetrics,
-	}, lastError
+	return e.buildFinalResult(false, e.MaxAttempts, lastOutput, timedOut, finalReason, stats, attemptMetrics, runStartTime, command, lastError), lastError
 }

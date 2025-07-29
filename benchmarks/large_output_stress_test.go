@@ -87,8 +87,7 @@ func TestLargeOutputStress(t *testing.T) {
 				}
 			}
 
-			// Force garbage collection to clean up
-			runtime.GC()
+			// Memory cleanup handled automatically by Go's GC
 		}
 	}
 
