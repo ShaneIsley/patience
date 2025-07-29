@@ -1,0 +1,67 @@
+name: docker
+version: "1.0"
+description: "Docker Registry and Docker Hub API response patterns"
+author: "Patience Team"
+
+patterns:
+  auth_required:
+    pattern: "$.errors[*].code == \"UNAUTHORIZED\""
+    description: "Docker registry authentication required"
+    priority: high
+    category: error
+    tags: ["auth", "unauthorized", "registry"]
+    metadata:
+      http_status: "401"
+      solution: "Provide valid credentials or login"
+
+  rate_limit_exceeded:
+    pattern: "$.errors[*].code == \"TOOMANYREQUESTS\""
+    description: "Docker Hub rate limit exceeded"
+    priority: high
+    category: error
+    tags: ["rate-limit", "docker-hub", "throttling"]
+    metadata:
+      http_status: "429"
+      documentation: "https://docs.docker.com/docker-hub/download-rate-limit/"
+
+  manifest_not_found:
+    pattern: "$.errors[*].code == \"MANIFEST_UNKNOWN\""
+    description: "Docker image manifest not found"
+    priority: medium
+    category: error
+    tags: ["manifest", "not-found", "image"]
+    metadata:
+      http_status: "404"
+
+  blob_not_found:
+    pattern: "$.errors[*].code == \"BLOB_UNKNOWN\""
+    description: "Docker image blob not found"
+    priority: medium
+    category: error
+    tags: ["blob", "not-found", "image"]
+
+  name_invalid:
+    pattern: "$.errors[*].code == \"NAME_INVALID\""
+    description: "Invalid repository name"
+    priority: medium
+    category: error
+    tags: ["validation", "name", "repository"]
+
+  tag_invalid:
+    pattern: "$.errors[*].code == \"TAG_INVALID\""
+    description: "Invalid image tag"
+    priority: medium
+    category: error
+    tags: ["validation", "tag", "image"]
+
+  registry_unavailable:
+    pattern: "$.errors[*].message =~ \"registry.*unavailable\""
+    description: "Docker registry is unavailable"
+    priority: high
+    category: error
+    tags: ["registry", "unavailable", "service"]
+
+metadata:
+  registry_api: "https://docs.docker.com/registry/spec/api/"
+  error_codes: "https://docs.docker.com/registry/spec/api/#errors"
+  rate_limits: "https://docs.docker.com/docker-hub/download-rate-limit/"

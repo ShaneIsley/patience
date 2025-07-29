@@ -1,0 +1,76 @@
+name: github
+version: "1.0"
+description: "GitHub API response patterns for common scenarios"
+author: "Patience Team"
+
+patterns:
+  rate_limit_exceeded:
+    pattern: "$.message =~ \"rate limit\""
+    description: "GitHub API rate limit exceeded"
+    priority: high
+    category: error
+    tags: ["rate-limit", "throttling"]
+    metadata:
+      retry_after_header: "X-RateLimit-Reset"
+      documentation: "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"
+
+  secondary_rate_limit:
+    pattern: "$.message =~ \"secondary rate limit\""
+    description: "GitHub secondary rate limit triggered"
+    priority: high
+    category: error
+    tags: ["rate-limit", "secondary"]
+
+  abuse_detection:
+    pattern: "$.message =~ \"abuse detection\""
+    description: "GitHub abuse detection mechanism triggered"
+    priority: critical
+    category: error
+    tags: ["abuse", "security"]
+
+  authentication_required:
+    pattern: "$.message =~ \"requires authentication\""
+    description: "Authentication required for this endpoint"
+    priority: high
+    category: error
+    tags: ["auth", "security"]
+
+  insufficient_permissions:
+    pattern: "$.message =~ \"insufficient.*permission\""
+    description: "Insufficient permissions for the requested operation"
+    priority: high
+    category: error
+    tags: ["auth", "permissions"]
+
+  not_found:
+    pattern: "$.message =~ \"not found\""
+    description: "Resource not found"
+    priority: medium
+    category: error
+    tags: ["not-found", "404"]
+
+  validation_failed:
+    pattern: "$.message == \"Validation Failed\""
+    description: "Request validation failed"
+    priority: medium
+    category: error
+    tags: ["validation", "400"]
+
+  server_error:
+    pattern: "$.message =~ \"server error\""
+    description: "GitHub server error"
+    priority: high
+    category: error
+    tags: ["server-error", "500"]
+
+  api_success:
+    pattern: "$.status == \"success\""
+    description: "Successful API response"
+    priority: low
+    category: success
+    tags: ["success"]
+
+metadata:
+  base_url: "https://api.github.com"
+  documentation: "https://docs.github.com/rest"
+  rate_limit_info: "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"

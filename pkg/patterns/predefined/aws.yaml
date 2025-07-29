@@ -1,0 +1,82 @@
+name: aws
+version: "1.0"
+description: "AWS API response patterns for common error scenarios"
+author: "Patience Team"
+
+patterns:
+  throttling_error:
+    pattern: "$.__type == \"ThrottlingException\""
+    description: "AWS API throttling exception"
+    priority: high
+    category: error
+    tags: ["throttling", "rate-limit"]
+    metadata:
+      retry_strategy: "exponential_backoff"
+      max_retries: "10"
+
+  request_limit_exceeded:
+    pattern: "$.Error.Code == \"RequestLimitExceeded\""
+    description: "AWS request limit exceeded"
+    priority: high
+    category: error
+    tags: ["rate-limit", "quota"]
+
+  service_unavailable:
+    pattern: "$.Error.Code == \"ServiceUnavailable\""
+    description: "AWS service temporarily unavailable"
+    priority: high
+    category: error
+    tags: ["service-unavailable", "503"]
+
+  internal_error:
+    pattern: "$.Error.Code == \"InternalError\""
+    description: "AWS internal server error"
+    priority: high
+    category: error
+    tags: ["internal-error", "500"]
+
+  access_denied:
+    pattern: "$.Error.Code == \"AccessDenied\""
+    description: "Access denied to AWS resource"
+    priority: high
+    category: error
+    tags: ["access-denied", "permissions"]
+
+  invalid_credentials:
+    pattern: "$.Error.Code == \"InvalidUserID.NotFound\""
+    description: "Invalid AWS credentials"
+    priority: critical
+    category: error
+    tags: ["credentials", "auth"]
+
+  resource_not_found:
+    pattern: "$.Error.Code =~ \".*NotFound\""
+    description: "AWS resource not found"
+    priority: medium
+    category: error
+    tags: ["not-found", "404"]
+
+  validation_error:
+    pattern: "$.Error.Code == \"ValidationException\""
+    description: "AWS request validation error"
+    priority: medium
+    category: error
+    tags: ["validation", "400"]
+
+  quota_exceeded:
+    pattern: "$.Error.Code =~ \".*QuotaExceeded\""
+    description: "AWS service quota exceeded"
+    priority: high
+    category: error
+    tags: ["quota", "limit"]
+
+  success_response:
+    pattern: "$.ResponseMetadata.HTTPStatusCode == 200"
+    description: "Successful AWS API response"
+    priority: low
+    category: success
+    tags: ["success", "200"]
+
+metadata:
+  documentation: "https://docs.aws.amazon.com/general/latest/gr/api-retries.html"
+  error_codes: "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html"

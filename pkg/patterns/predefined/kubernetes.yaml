@@ -1,0 +1,75 @@
+name: kubernetes
+version: "1.0"
+description: "Kubernetes API response patterns for pod and resource management"
+author: "Patience Team"
+
+patterns:
+  pod_pending:
+    pattern: "$.status.phase == \"Pending\""
+    description: "Pod is in pending state"
+    priority: medium
+    category: warning
+    tags: ["pod", "pending", "scheduling"]
+    metadata:
+      common_reasons: ["Unschedulable", "ImagePullBackOff", "ContainerCreating"]
+
+  pod_failed:
+    pattern: "$.status.phase == \"Failed\""
+    description: "Pod has failed"
+    priority: high
+    category: error
+    tags: ["pod", "failed", "error"]
+
+  image_pull_error:
+    pattern: "$.status.containerStatuses[*].state.waiting.reason =~ \".*ImagePull.*\""
+    description: "Container image pull error"
+    priority: high
+    category: error
+    tags: ["image", "pull", "container"]
+
+  crash_loop_backoff:
+    pattern: "$.status.containerStatuses[*].state.waiting.reason == \"CrashLoopBackOff\""
+    description: "Container is in crash loop backoff"
+    priority: high
+    category: error
+    tags: ["container", "crash", "backoff"]
+
+  resource_quota_exceeded:
+    pattern: "$.message =~ \"exceeded quota\""
+    description: "Resource quota exceeded"
+    priority: high
+    category: error
+    tags: ["quota", "resources", "limit"]
+
+  insufficient_resources:
+    pattern: "$.message =~ \"insufficient.*resources\""
+    description: "Insufficient cluster resources"
+    priority: high
+    category: error
+    tags: ["resources", "capacity", "scheduling"]
+
+  forbidden_access:
+    pattern: "$.code == 403"
+    description: "Forbidden access to Kubernetes resource"
+    priority: high
+    category: error
+    tags: ["rbac", "permissions", "403"]
+
+  not_found:
+    pattern: "$.code == 404"
+    description: "Kubernetes resource not found"
+    priority: medium
+    category: error
+    tags: ["not-found", "404"]
+
+  pod_running:
+    pattern: "$.status.phase == \"Running\""
+    description: "Pod is running successfully"
+    priority: low
+    category: success
+    tags: ["pod", "running", "success"]
+
+metadata:
+  api_version: "v1"
+  documentation: "https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/"
+  troubleshooting: "https://kubernetes.io/docs/tasks/debug-application-cluster/"
