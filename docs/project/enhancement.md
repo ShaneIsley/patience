@@ -6,7 +6,7 @@ The Diophantine strategy is **functionally complete** for its core mathematical 
 
 ✅ **Complete Core Features:**
 - Mathematical proactive rate limiting using Diophantine inequalities
-- Basic multi-instance coordination through mock daemon client
+- Single-host, multi-instance coordination via a real daemon process
 - Full CLI integration with configuration precedence
 - Graceful fallback behavior when daemon unavailable
 - Comprehensive test coverage with all tests passing
@@ -16,48 +16,40 @@ The implementation is **production-ready** for single-host deployments and provi
 ## High-Impact Enhancements
 
 ### 1. Real Daemon Implementation
-- **Current**: Mock daemon client for testing purposes
-- **Enhancement**: Full Unix socket server with persistence and lifecycle management
-- **Value**: True multi-instance coordination, production deployment ready
-- **Complexity**: Medium - requires daemon process management, state persistence
-- **Implementation**: 
-  - Replace mock client with real Unix socket communication
-  - Add daemon state persistence (SQLite/file-based)
-  - Implement daemon lifecycle management (start/stop/restart)
-  - Add daemon health monitoring and recovery
+- **Status**: ✅ Done
+- **Current**: Single-host coordination via Unix socket daemon.
+- **Enhancement**: Full Unix socket server with persistence and lifecycle management.
+- **Value**: True multi-instance coordination, production deployment ready.
+- **Complexity**: Medium.
+- **Implementation Notes**: The core Unix socket communication is complete. Future work could involve state persistence and advanced lifecycle management.
 
 ### 2. Distributed Coordination
-- **Current**: Single-host daemon coordination only
-- **Enhancement**: Network-based coordination across multiple hosts/containers
-- **Value**: Container orchestration support, multi-server deployments, cloud-native scaling
-- **Complexity**: High - requires distributed systems expertise
-- **Implementation**:
-  - Redis/etcd backend for shared state
-  - Gossip protocols for peer discovery
-  - Consensus algorithms for distributed scheduling
-  - Network partition handling and split-brain prevention
+- **Status**: ❌ Not Planned
+- **Current**: Single-host daemon coordination only.
+- **Enhancement**: Network-based coordination across multiple hosts/containers.
+- **Value**: Essential for cloud-native environments and multi-server deployments.
+- **Complexity**: High.
 
 ### 3. Dynamic Rate Limit Discovery
-- **Current**: Manual rate limit specification required
-- **Enhancement**: Auto-detect rate limits from API responses and headers
-- **Value**: Zero-configuration setup, adaptive to API changes, reduced maintenance
-- **Complexity**: Medium - requires HTTP response parsing and learning algorithms
-- **Implementation**:
-  - Parse `X-RateLimit-*`, `Retry-After` headers automatically
-  - Learn from 429 responses and adjust limits dynamically
-  - Maintain rate limit database with confidence intervals
-  - Provide override mechanisms for manual tuning
+- **Status**: 💡 Planned
+- **Current**: Manual rate limit specification required.
+- **Enhancement**: Auto-detect rate limits from API responses and headers.
+- **Value**: Zero-configuration setup, adaptive to API changes, reduced maintenance.
+- **Complexity**: Medium.
+- **Implementation Ideas**:
+  - Parse `X-RateLimit-*`, `Retry-After` headers automatically.
+  - Learn from `429 Too Many Requests` responses.
+  - Maintain a local database of discovered rate limits.
 
 ### 4. Intelligent Resource Grouping
-- **Current**: Basic command-based resource ID derivation
-- **Enhancement**: Smart API endpoint grouping with domain-aware clustering
-- **Value**: More efficient rate limit utilization, better resource sharing
-- **Complexity**: Medium - requires pattern recognition and clustering algorithms
-- **Implementation**:
-  - URL pattern matching and normalization
-  - API endpoint semantic grouping (e.g., `/users/{id}` patterns)
-  - ML-based clustering of similar resources
-  - Domain-specific grouping rules (AWS services, Kubernetes resources)
+- **Status**: 💡 Planned
+- **Current**: Basic command-based resource ID derivation.
+- **Enhancement**: Smart API endpoint grouping with domain-aware clustering.
+- **Value**: More efficient rate limit utilization, better resource sharing.
+- **Complexity**: Medium.
+- **Implementation Ideas**:
+  - URL pattern matching and normalization (e.g., `/users/{id}`).
+  - Domain-specific grouping rules (e.g., for AWS or Kubernetes APIs).
 
 ## Medium-Impact Enhancements
 
