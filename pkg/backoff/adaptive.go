@@ -216,34 +216,51 @@ func (a *Adaptive) findBucketIndexLocked(delay time.Duration) int {
 // findBucketIndexForTesting is a test helper that exposes bucket index calculation
 // This method is only used for testing bucket boundary logic
 func (a *Adaptive) findBucketIndexForTesting(delay time.Duration) int {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	// Ensure buckets are initialized
-	if len(a.delayBuckets) == 0 {
-		// Initialize buckets if not already done
-		a.mu.RUnlock()
-		a.mu.Lock()
-		if len(a.delayBuckets) == 0 {
-			a.initializeBucketsLocked()
-		}
-		a.mu.Unlock()
-		a.mu.RLock()
-	}
-
-	return a.findBucketIndexLocked(delay)
+	return a.findBucketIndexSafe(delay)
 }
 
 // getBucketSuccessRateForTesting is a test helper that returns the success rate for a bucket containing the given delay
 // This method is only used for testing EMA accuracy
 func (a *Adaptive) getBucketSuccessRateForTesting(delay time.Duration) float64 {
+	return a.getBucketSuccessRateSafe(delay)
+}
+
+// ensureBucketsInitialized safely initializes buckets using double-checked locking
+func (a *Adaptive) ensureBucketsInitialized() {
+	// Fast path: check if already initialized with read lock
+	a.mu.RLock()
+	if len(a.delayBuckets) > 0 {
+		a.mu.RUnlock()
+		return
+	}
+	a.mu.RUnlock()
+
+	// Slow path: initialize with write lock
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if len(a.delayBuckets) == 0 {
+		a.initializeBucketsLocked()
+	}
+}
+
+// findBucketIndexSafe safely finds bucket index without lock upgrade pattern
+func (a *Adaptive) findBucketIndexSafe(delay time.Duration) int {
+	a.ensureBucketsInitialized()
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	// Ensure buckets are initialized
-	if len(a.delayBuckets) == 0 {
-		return 0.0
-	}
+	return a.findBucketIndexLocked(delay)
+}
+
+// getBucketSuccessRateSafe safely gets bucket success rate without lock upgrade pattern
+func (a *Adaptive) getBucketSuccessRateSafe(delay time.Duration) float64 {
+	a.ensureBucketsInitialized()
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 
 	bucketIndex := a.findBucketIndexLocked(delay)
 	if bucketIndex < 0 {
