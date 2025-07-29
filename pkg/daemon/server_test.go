@@ -3,10 +3,8 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -18,7 +16,7 @@ import (
 func TestServer_HandleRecentMetrics(t *testing.T) {
 	// Given a server with test metrics
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// Add test metrics
@@ -47,7 +45,7 @@ func TestServer_HandleRecentMetrics(t *testing.T) {
 func TestServer_HandleRecentMetricsWithLimit(t *testing.T) {
 	// Given a server with multiple metrics
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// Add multiple test metrics
@@ -77,7 +75,7 @@ func TestServer_HandleRecentMetricsWithLimit(t *testing.T) {
 func TestServer_HandleAggregatedStats(t *testing.T) {
 	// Given a server with test metrics
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// Add test metrics
@@ -108,7 +106,7 @@ func TestServer_HandleAggregatedStats(t *testing.T) {
 func TestServer_HandleAggregatedStatsWithTimeRange(t *testing.T) {
 	// Given a server with test metrics
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// Add test metric
@@ -137,7 +135,7 @@ func TestServer_HandleAggregatedStatsWithTimeRange(t *testing.T) {
 func TestServer_HandleExportMetrics(t *testing.T) {
 	// Given a server with test metrics
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// Add test metric
@@ -165,7 +163,7 @@ func TestServer_HandleExportMetrics(t *testing.T) {
 func TestServer_HandleDaemonStats(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When requesting daemon stats
@@ -189,7 +187,7 @@ func TestServer_HandleDaemonStats(t *testing.T) {
 func TestServer_HandlePerformanceStats(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When requesting performance stats
@@ -225,7 +223,7 @@ func TestServer_HandlePerformanceStats(t *testing.T) {
 func TestServer_HandleHealth(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When requesting health status
@@ -249,7 +247,7 @@ func TestServer_HandleHealth(t *testing.T) {
 func TestServer_HandleDashboard(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When requesting the dashboard
@@ -267,7 +265,7 @@ func TestServer_HandleDashboard(t *testing.T) {
 func TestServer_MethodNotAllowed(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When making a POST request to GET-only endpoint
@@ -282,7 +280,7 @@ func TestServer_MethodNotAllowed(t *testing.T) {
 func TestServer_NotFound(t *testing.T) {
 	// Given a server
 	metricsStorage := storage.NewMetricsStorage(100, time.Hour)
-	logger := log.New(os.Stdout, "[test] ", log.LstdFlags)
+	logger := NewLogger("test", LogLevelInfo)
 	server := NewServer(metricsStorage, 8080, logger)
 
 	// When requesting non-existent path

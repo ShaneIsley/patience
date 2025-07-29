@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -24,7 +23,7 @@ type Daemon struct {
 	storage       *storage.MetricsStorage
 	listener      net.Listener
 	server        *Server
-	logger        *log.Logger
+	logger        *Logger
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
@@ -76,8 +75,8 @@ func NewDaemon(config *Config) (*Daemon, error) {
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create logger
-	logger := log.New(os.Stdout, "[retryd] ", log.LstdFlags)
+	// Create structured logger
+	logger := NewLogger("daemon", LogLevel(config.LogLevel))
 
 	// Create metrics storage
 	metricsStorage := storage.NewMetricsStorage(config.MaxMetrics, config.MetricsMaxAge)
@@ -96,7 +95,7 @@ func NewDaemon(config *Config) (*Daemon, error) {
 
 // Start starts the daemon
 func (d *Daemon) Start() error {
-	d.logger.Printf("Starting retry daemon on socket %s", d.config.SocketPath)
+	d.logger.Info("starting retry daemon", "socket_path", d.config.SocketPath)
 
 	// Write PID file
 	if err := d.writePidFile(); err != nil {
@@ -117,7 +116,7 @@ func (d *Daemon) Start() error {
 
 	// Set socket permissions
 	if err := os.Chmod(d.config.SocketPath, 0666); err != nil {
-		d.logger.Printf("Warning: failed to set socket permissions: %v", err)
+		d.logger.Warn("failed to set socket permissions", "error", err)
 	}
 
 	// Start HTTP server if enabled
@@ -127,7 +126,7 @@ func (d *Daemon) Start() error {
 		go func() {
 			defer d.wg.Done()
 			if err := d.server.Start(d.ctx); err != nil {
-				d.logger.Printf("HTTP server error: %v", err)
+				d.logger.Error("HTTP server error", "error", err)
 			}
 		}()
 	}
@@ -142,13 +141,13 @@ func (d *Daemon) Start() error {
 	// Setup signal handling
 	d.setupSignalHandling()
 
-	d.logger.Printf("Daemon started successfully")
+	d.logger.Info("daemon started successfully")
 	return nil
 }
 
 // Stop stops the daemon gracefully
 func (d *Daemon) Stop() error {
-	d.logger.Printf("Stopping daemon...")
+	d.logger.Info("stopping daemon")
 
 	// Cancel context to signal shutdown
 	d.cancel()
@@ -170,7 +169,7 @@ func (d *Daemon) Stop() error {
 	d.cleanupSocket()
 	d.removePidFile()
 
-	d.logger.Printf("Daemon stopped")
+	d.logger.Info("daemon stopped")
 	return nil
 }
 
@@ -199,7 +198,7 @@ func (d *Daemon) handleConnections() {
 				if d.ctx.Err() != nil {
 					return // Context cancelled
 				}
-				d.logger.Printf("Error accepting connection: %v", err)
+				d.logger.Error("error accepting connection", "error", err)
 				continue
 			}
 
@@ -219,7 +218,7 @@ func (d *Daemon) handleConnections() {
 				return
 			default:
 				// Connection limit reached, reject connection gracefully
-				d.logger.Printf("Connection limit (%d) reached, rejecting connection", d.config.MaxConnections)
+				d.logger.Warn("connection limit reached, rejecting connection", "max_connections", d.config.MaxConnections)
 				conn.Close()
 			}
 		}
@@ -236,24 +235,24 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Read metrics data
 	data, err := io.ReadAll(conn)
 	if err != nil {
-		d.logger.Printf("Error reading from connection: %v", err)
+		d.logger.Error("error reading from connection", "error", err)
 		return
 	}
 
 	// Parse metrics
 	var runMetrics metrics.RunMetrics
 	if err := json.Unmarshal(data, &runMetrics); err != nil {
-		d.logger.Printf("Error parsing metrics: %v", err)
+		d.logger.Error("error parsing metrics", "error", err)
 		return
 	}
 
 	// Store metrics
 	if err := d.storage.Store(&runMetrics); err != nil {
-		d.logger.Printf("Error storing metrics: %v", err)
+		d.logger.Error("error storing metrics", "error", err)
 		return
 	}
 
-	d.logger.Printf("Stored metrics for command: %s", runMetrics.Command)
+	d.logger.Debug("stored metrics for command", "command", runMetrics.Command)
 }
 
 // setupSignalHandling sets up graceful shutdown on signals
@@ -266,7 +265,7 @@ func (d *Daemon) setupSignalHandling() {
 		defer d.wg.Done()
 		select {
 		case sig := <-sigChan:
-			d.logger.Printf("Received signal %v, shutting down...", sig)
+			d.logger.Info("received signal, shutting down", "signal", sig)
 			d.cancel()
 		case <-d.ctx.Done():
 			return

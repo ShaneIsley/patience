@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -777,10 +778,13 @@ func recordExplicitFlags(debug *ConfigDebugInfo, flags *Config, explicitFields m
 	}
 }
 
-// PrintDebugInfo prints configuration debug information
+// PrintDebugInfo prints configuration debug information using structured logging
 func (debug *ConfigDebugInfo) PrintDebugInfo() {
-	fmt.Println("Configuration Resolution Debug Info:")
-	fmt.Println("===================================")
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	logger.Info("Configuration Resolution Debug Info")
 
 	configKeys := []string{
 		"attempts", "delay", "timeout", "backoff", "max_delay",
@@ -791,6 +795,9 @@ func (debug *ConfigDebugInfo) PrintDebugInfo() {
 	for _, key := range configKeys {
 		source := debug.Sources[key]
 		value := debug.Values[key]
-		fmt.Printf("%-20s: %-15v (from %s)\n", key, value, source)
+		logger.Debug("config value",
+			"key", key,
+			"value", value,
+			"source", source)
 	}
 }

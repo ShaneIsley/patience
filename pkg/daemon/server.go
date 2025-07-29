@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
@@ -18,12 +17,12 @@ import (
 type Server struct {
 	storage    *storage.MetricsStorage
 	port       int
-	logger     *log.Logger
+	logger     *Logger
 	httpServer *http.Server
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(storage *storage.MetricsStorage, port int, logger *log.Logger) *Server {
+func NewServer(storage *storage.MetricsStorage, port int, logger *Logger) *Server {
 	return &Server{
 		storage: storage,
 		port:    port,
@@ -54,7 +53,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Handler: mux,
 	}
 
-	s.logger.Printf("Starting HTTP server on port %d", s.port)
+	s.logger.Info("starting HTTP server", "port", s.port)
 
 	// Start server in goroutine
 	errChan := make(chan error, 1)
