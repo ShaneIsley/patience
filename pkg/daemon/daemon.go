@@ -28,6 +28,7 @@ type Daemon struct {
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
 	connectionSem chan struct{}
+	workerPool    *WorkerPool
 }
 
 // Config holds daemon configuration
@@ -81,6 +82,9 @@ func NewDaemon(config *Config) (*Daemon, error) {
 	// Create metrics storage
 	metricsStorage := storage.NewMetricsStorage(config.MaxMetrics, config.MetricsMaxAge)
 
+	// Create worker pool for handling connections
+	workerPool := NewWorkerPool(config.MaxConnections, metricsStorage, logger)
+
 	daemon := &Daemon{
 		config:        config,
 		storage:       metricsStorage,
@@ -88,6 +92,7 @@ func NewDaemon(config *Config) (*Daemon, error) {
 		ctx:           ctx,
 		cancel:        cancel,
 		connectionSem: make(chan struct{}, config.MaxConnections),
+		workerPool:    workerPool,
 	}
 
 	return daemon, nil
@@ -118,6 +123,9 @@ func (d *Daemon) Start() error {
 	if err := os.Chmod(d.config.SocketPath, 0666); err != nil {
 		d.logger.Warn("failed to set socket permissions", "error", err)
 	}
+
+	// Start worker pool
+	d.workerPool.Start()
 
 	// Start HTTP server if enabled
 	if d.config.EnableHTTP {
@@ -155,6 +163,11 @@ func (d *Daemon) Stop() error {
 	// Close listener
 	if d.listener != nil {
 		d.listener.Close()
+	}
+
+	// Stop worker pool
+	if d.workerPool != nil {
+		d.workerPool.Stop()
 	}
 
 	// Stop HTTP server
@@ -202,24 +215,10 @@ func (d *Daemon) handleConnections() {
 				continue
 			}
 
-			// Try to acquire semaphore for connection limiting
-			select {
-			case d.connectionSem <- struct{}{}:
-				// Successfully acquired semaphore, handle connection
-				d.wg.Add(1)
-				go func() {
-					defer d.wg.Done()
-					defer func() { <-d.connectionSem }() // Release semaphore when done
-					d.handleConnection(conn)
-				}()
-			case <-d.ctx.Done():
-				// Context cancelled while waiting for semaphore
-				conn.Close()
-				return
-			default:
-				// Connection limit reached, reject connection gracefully
-				d.logger.Warn("connection limit reached, rejecting connection", "max_connections", d.config.MaxConnections)
-				conn.Close()
+			// Submit connection to worker pool
+			if !d.workerPool.SubmitConnection(conn) {
+				// Worker pool rejected the connection (queue full or stopped)
+				d.logger.Warn("worker pool rejected connection", "max_connections", d.config.MaxConnections)
 			}
 		}
 	}
@@ -310,6 +309,12 @@ func (d *Daemon) GetStats() map[string]interface{} {
 	stats := d.storage.GetStats()
 	stats["daemon_config"] = d.config
 	stats["uptime"] = time.Since(time.Now()) // This would be tracked properly in a real implementation
+
+	// Add worker pool statistics
+	if d.workerPool != nil {
+		stats["worker_pool"] = d.workerPool.GetStats()
+	}
+
 	return stats
 }
 

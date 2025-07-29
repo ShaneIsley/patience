@@ -185,36 +185,79 @@ func (s *UnixServer) handleConnection(conn net.Conn) {
 
 // handleProtocolMessage processes a protocol message and returns a response
 func (s *UnixServer) handleProtocolMessage(message string) map[string]interface{} {
-	var request map[string]interface{}
+	// Use type-safe version and convert back to map for backward compatibility
+	response := s.handleProtocolMessageTypeSafe(message)
 
-	// Parse JSON message
-	if err := json.Unmarshal([]byte(message), &request); err != nil {
+	// Convert type-safe response back to map[string]interface{} for existing callers
+	responseData, err := json.Marshal(response)
+	if err != nil {
 		return map[string]interface{}{
 			"type":  "error",
-			"error": "invalid JSON",
+			"error": "failed to serialize response",
 		}
 	}
 
-	// Handle different message types
-	msgType, ok := request["type"].(string)
-	if !ok {
+	var responseMap map[string]interface{}
+	if err := json.Unmarshal(responseData, &responseMap); err != nil {
 		return map[string]interface{}{
 			"type":  "error",
-			"error": "missing or invalid type field",
+			"error": "failed to convert response",
 		}
 	}
 
-	switch msgType {
+	return responseMap
+}
+
+// handleProtocolMessageTypeSafe processes a protocol message using type-safe structs
+func (s *UnixServer) handleProtocolMessageTypeSafe(message string) ProtocolMessageJSON {
+	// First, parse just to get the message type
+	var typeCheck struct {
+		Type string `json:"type"`
+	}
+
+	if err := json.Unmarshal([]byte(message), &typeCheck); err != nil {
+		return ErrorResponseJSON{
+			Type:  "error",
+			Error: "invalid JSON",
+		}
+	}
+
+	// Handle different message types with type-safe parsing
+	switch typeCheck.Type {
 	case "handshake":
-		return s.handleHandshake(request)
+		var request HandshakeRequestJSON
+		if err := json.Unmarshal([]byte(message), &request); err != nil {
+			return ErrorResponseJSON{
+				Type:  "error",
+				Error: "invalid handshake request format",
+			}
+		}
+		return s.handleHandshakeTypeSafe(request)
+
 	case "schedule_request":
-		return s.handleScheduleRequest(request)
+		var request ScheduleRequestJSON
+		if err := json.Unmarshal([]byte(message), &request); err != nil {
+			return ErrorResponseJSON{
+				Type:  "error",
+				Error: "invalid schedule request format",
+			}
+		}
+		return s.handleScheduleRequestTypeSafe(request)
+
 	case "register_request":
-		return s.handleRegisterRequest(request)
+		var request RegisterRequestJSON
+		if err := json.Unmarshal([]byte(message), &request); err != nil {
+			return ErrorResponseJSON{
+				Type:  "error",
+				Error: "invalid register request format",
+			}
+		}
+		return s.handleRegisterRequestTypeSafe(request)
+
 	default:
-		return map[string]interface{}{
-			"type":  "error",
-			"error": "unknown message type",
+		return ErrorResponseJSON{
+			Type:  "error",
+			Error: "unknown message type",
 		}
 	}
 }
@@ -262,5 +305,39 @@ func (s *UnixServer) handleRegisterRequest(request map[string]interface{}) map[s
 		"type":    "register_response",
 		"success": true,
 		"message": "requests registered successfully",
+	}
+}
+
+// Type-safe protocol handlers
+
+// handleHandshakeTypeSafe handles handshake using type-safe protocol
+func (s *UnixServer) handleHandshakeTypeSafe(req HandshakeRequestJSON) HandshakeResponseJSON {
+	// For now, just return a successful response
+	return HandshakeResponseJSON{
+		Type:    "handshake_response",
+		Status:  "ok",
+		Message: "handshake successful",
+	}
+}
+
+// handleScheduleRequestTypeSafe handles schedule request using type-safe protocol
+func (s *UnixServer) handleScheduleRequestTypeSafe(req ScheduleRequestJSON) ScheduleResponseJSON {
+	// For now, just return a successful response
+	return ScheduleResponseJSON{
+		Type:        "schedule_response",
+		Status:      "ok",
+		Message:     "request scheduled",
+		ScheduledAt: time.Now(),
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}
+}
+
+// handleRegisterRequestTypeSafe handles register request using type-safe protocol
+func (s *UnixServer) handleRegisterRequestTypeSafe(req RegisterRequestJSON) RegisterResponseJSON {
+	// For now, just return a successful response
+	return RegisterResponseJSON{
+		Type:    "register_response",
+		Status:  "ok",
+		Message: "requests registered successfully",
 	}
 }

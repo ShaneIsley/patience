@@ -1,0 +1,211 @@
+# golangci-lint configuration for patience project
+# Prevents regression of code quality improvements from TDD cycles 1-4
+
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_generated\\.go$"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  sort-results: true
+
+linters-settings:
+  # Function length limits - prevents regression of TDD Cycle 1 (216-line method fix)
+  funlen:
+    lines: 120  # Generous limit, our refactored Run method is 111 lines
+    statements: 60
+    ignore-comments: true
+
+  # Cyclomatic complexity limits - prevents complex functions
+  gocyclo:
+    min-complexity: 15  # Reasonable limit for maintainable code
+
+  # Magic number detection - prevents regression of TDD Cycle 1 (magic numbers fix)
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+    ignore-tests: true
+    match-constant: true
+    numbers: true  # Detect repeated numeric constants
+    min: 3
+    max: 3
+
+  # Line length limits
+  lll:
+    line-length: 120
+    tab-width: 4
+
+  # Naming conventions
+  revive:
+    min-confidence: 0.8
+    rules:
+      - name: var-naming
+      - name: package-comments
+      - name: exported
+      - name: var-declaration
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: increment-decrement
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: superfluous-else
+
+  # Error checks - prevents regression of TDD Cycle 2 (error handling)
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    ignore: fmt:.*,io/ioutil:^Read.*
+    exclude-functions:
+      - (*os.File).Close
+      - (*database/sql.Rows).Close
+
+  # Spelling checks
+  misspell:
+    locale: US
+
+  # Race condition detection - prevents regression of TDD Cycle 3
+  govet:
+    enable:
+      - atomic
+      - bools
+      - buildtag
+      - nilfunc
+      - printf
+      - rangeloops
+      - shadow
+      - shift
+      - structtag
+      - tests
+      - unreachable
+      - unsafeptr
+      - unusedresult
+    disable:
+      - fieldalignment  # Can be too strict
+
+  # Static analysis - comprehensive checks including race conditions
+  staticcheck:
+    checks: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022"]
+
+  # Security and memory management - prevents regression of TDD Cycle 4
+  gosec:
+    severity: medium
+    confidence: medium
+    excludes:
+      - G104  # Audit errors not checked (covered by errcheck)
+      - G204  # Subprocess launched with variable (expected in CLI tools)
+    config:
+      global:
+        nosec: true
+        audit: true
+
+  # Preallocation checks - prevents memory inefficiencies
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+linters:
+  enable:
+    # Essential linters - prevent regression of fixed issues
+    - funlen          # Function length (TDD Cycle 1 - complexity)
+    - gocyclo         # Cyclomatic complexity
+    - goconst         # Magic numbers (TDD Cycle 1 - constants)
+    - unused          # Unused code
+    - ineffassign     # Ineffective assignments
+    - misspell        # Spelling
+    - errcheck        # Error handling (TDD Cycle 2 - error propagation)
+    - revive          # Naming and style
+    - lll             # Line length
+    - unconvert       # Unnecessary conversions
+    - unparam         # Unused parameters
+    - nakedret        # Naked returns
+    - exportloopref   # Loop variable capture
+    - goimports       # Import formatting
+    - gofmt           # Code formatting
+    - whitespace      # Whitespace issues
+    
+    # Race condition detection (TDD Cycle 3 - concurrency safety)
+    - govet           # Includes race condition detection
+    - staticcheck     # Advanced static analysis including race detection
+    
+    # Type safety enforcement (TDD Cycle 4 - interface{} elimination)
+    - gosimple        # Simplify code and improve type safety
+    - typecheck       # Type checking
+    
+    # Memory management and performance (TDD Cycle 4 - GC optimization)
+    - prealloc        # Slice preallocation
+    - gosec           # Security issues including memory leaks
+    
+  disable:
+    # Only disable if they cause build issues
+    - gocritic        # Can be overly strict for this codebase
+
+issues:
+  # Exclude common false positives
+  exclude-rules:
+    # Exclude magic number detection in tests
+    - path: _test\.go
+      linters:
+        - goconst
+        - funlen
+        - gocyclo
+        - lll
+    
+    # Exclude magic numbers in constants files
+    - path: constants\.go
+      linters:
+        - goconst
+    
+    # Allow longer functions in main packages (CLI setup)
+    - path: cmd/
+      linters:
+        - funlen
+    
+    # Allow some complexity in benchmark files
+    - path: _benchmark_test\.go
+      linters:
+        - gocyclo
+        - funlen
+
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+  
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+  
+  # Show only new issues created after git revision
+  new: false
+  
+  # Fix found issues (if it's supported by the linter)
+  fix: false
+
+severity:
+  default-severity: error
+  case-sensitive: false
+  rules:
+    - linters:
+        - funlen
+        - gocyclo
+        - goconst
+      severity: error  # Critical for preventing regression
+    - linters:
+        - misspell
+        - whitespace
+        - goimports
+      severity: warning  # Style issues

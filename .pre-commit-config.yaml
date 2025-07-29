@@ -1,0 +1,130 @@
+# Pre-commit hooks for patience project
+# Prevents regression of TDD cycle fixes at commit time
+# Install with: pre-commit install
+
+repos:
+  # Go formatting and imports
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        name: Format Go code
+        description: Runs gofmt to format Go code
+      - id: go-imports
+        name: Fix Go imports
+        description: Runs goimports to fix imports
+      - id: go-mod-tidy
+        name: Tidy Go modules
+        description: Runs go mod tidy to clean up modules
+      - id: go-vet-mod
+        name: Go vet
+        description: Runs go vet to catch common errors
+      - id: go-unit-tests-mod
+        name: Run Go unit tests
+        description: Runs go test to ensure tests pass
+
+  # Comprehensive linting - prevents all TDD cycle regressions
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint (comprehensive quality checks)
+        description: Prevents regression of all TDD cycle fixes
+        entry: golangci-lint
+        args: [run, --config=.golangci.yml, --timeout=5m]
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      # TDD Cycle 1 regression prevention - function complexity
+      - id: check-function-complexity
+        name: Function complexity check
+        description: Prevents regression of 216-line method fix
+        entry: bash
+        args:
+          - -c
+          - |
+            RUN_METHOD_LINES=$(sed -n '/^func (e \*Executor) Run(/,/^}/p' pkg/executor/executor.go | wc -l)
+            if [ "$RUN_METHOD_LINES" -gt 130 ]; then
+              echo "ERROR: Executor.Run method is too long ($RUN_METHOD_LINES lines)"
+              exit 1
+            fi
+            echo "✅ Function complexity OK"
+        language: system
+        files: pkg/executor/executor\.go$
+        pass_filenames: false
+
+      # TDD Cycle 1 regression prevention - magic numbers
+      - id: check-constants-file
+        name: Constants file check
+        description: Prevents regression of magic numbers fix
+        entry: bash
+        args:
+          - -c
+          - |
+            if [ ! -f "pkg/executor/constants.go" ]; then
+              echo "ERROR: constants.go file missing - magic numbers may have been reintroduced"
+              exit 1
+            fi
+            echo "✅ Constants file exists"
+        language: system
+        files: pkg/executor/.*\.go$
+        pass_filenames: false
+
+      # TDD Cycle 3 regression prevention - concurrency safety
+      - id: check-mutex-usage
+        name: Concurrency safety check
+        description: Prevents regression of race condition fixes
+        entry: bash
+        args:
+          - -c
+          - |
+            MUTEX_USAGE=$(grep -r "sync\.\(Mutex\|RWMutex\)" pkg/ | wc -l)
+            if [ "$MUTEX_USAGE" -lt 5 ]; then
+              echo "ERROR: Insufficient mutex usage - concurrency safety may be compromised"
+              exit 1
+            fi
+            echo "✅ Concurrency safety maintained"
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      # TDD Cycle 4 regression prevention - type safety
+      - id: check-interface-usage
+        name: Type safety check
+        description: Prevents regression of interface{} elimination
+        entry: bash
+        args:
+          - -c
+          - |
+            INTERFACE_USAGE=$(grep -r "interface{}" pkg/ | grep -v "_test.go" | wc -l)
+            if [ "$INTERFACE_USAGE" -gt 50 ]; then
+              echo "ERROR: Too many interface{} usages ($INTERFACE_USAGE) - type safety regression"
+              exit 1
+            fi
+            echo "✅ Type safety maintained ($INTERFACE_USAGE usages - mostly JSON/config)"
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+  # General code quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-toml
+        name: Check TOML syntax
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1000']
+
+# Configuration
+default_stages: [commit]
+fail_fast: false
+minimum_pre_commit_version: '2.20.0'

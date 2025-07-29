@@ -44,21 +44,21 @@ func (c *DaemonClient) connect() error {
 	return c.performHandshake()
 }
 
-// performHandshake performs the initial protocol handshake
+// performHandshake performs the initial protocol handshake using type-safe protocol
 func (c *DaemonClient) performHandshake() error {
-	handshakeReq := map[string]interface{}{
-		"type":    "handshake",
-		"version": "1.0",
-		"client":  "patience-cli",
+	handshakeReq := HandshakeRequestJSON{
+		Type:    "handshake",
+		Version: "1.0",
+		Client:  "patience-cli",
 	}
 
-	response, err := c.sendRequest(handshakeReq)
+	response, err := c.SendHandshakeTypeSafe(handshakeReq)
 	if err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
 
-	if status, ok := response["status"].(string); !ok || status != "ok" {
-		return fmt.Errorf("handshake rejected by daemon")
+	if response.Status != "ok" {
+		return fmt.Errorf("handshake rejected by daemon: %s", response.Message)
 	}
 
 	return nil
@@ -210,4 +210,112 @@ func (c *DaemonClient) Close() error {
 		return err
 	}
 	return nil
+}
+
+// Type-safe protocol methods
+
+// SendHandshakeTypeSafe performs handshake using type-safe protocol
+func (c *DaemonClient) SendHandshakeTypeSafe(req HandshakeRequestJSON) (HandshakeResponseJSON, error) {
+	// Convert to old format for now to maintain compatibility
+	oldRequest := map[string]interface{}{
+		"type":    req.Type,
+		"version": req.Version,
+		"client":  req.Client,
+	}
+
+	response, err := c.sendRequest(oldRequest)
+	if err != nil {
+		return HandshakeResponseJSON{}, err
+	}
+
+	// Convert response back to type-safe format
+	resp := HandshakeResponseJSON{
+		Type: "handshake_response",
+	}
+
+	if status, ok := response["status"].(string); ok {
+		resp.Status = status
+	}
+	if message, ok := response["message"].(string); ok {
+		resp.Message = message
+	}
+
+	return resp, nil
+}
+
+// SendScheduleRequestTypeSafe sends schedule request using type-safe protocol
+func (c *DaemonClient) SendScheduleRequestTypeSafe(req ScheduleRequestJSON) (ScheduleResponseJSON, error) {
+	// Convert to old format for now to maintain compatibility
+	oldRequest := map[string]interface{}{
+		"type":         req.Type,
+		"resource_id":  req.ResourceID,
+		"command":      req.Command,
+		"requested_at": req.RequestedAt.Format(time.RFC3339),
+	}
+
+	response, err := c.sendRequest(oldRequest)
+	if err != nil {
+		return ScheduleResponseJSON{}, err
+	}
+
+	// Convert response back to type-safe format
+	resp := ScheduleResponseJSON{
+		Type: "schedule_response",
+	}
+
+	if status, ok := response["status"].(string); ok {
+		resp.Status = status
+	}
+	if message, ok := response["message"].(string); ok {
+		resp.Message = message
+	}
+	if scheduledAtStr, ok := response["scheduled_at"].(string); ok {
+		if scheduledAt, err := time.Parse(time.RFC3339, scheduledAtStr); err == nil {
+			resp.ScheduledAt = scheduledAt
+		}
+	}
+	if expiresAtStr, ok := response["expires_at"].(string); ok {
+		if expiresAt, err := time.Parse(time.RFC3339, expiresAtStr); err == nil {
+			resp.ExpiresAt = expiresAt
+		}
+	}
+
+	return resp, nil
+}
+
+// SendRegisterRequestTypeSafe sends register request using type-safe protocol
+func (c *DaemonClient) SendRegisterRequestTypeSafe(req RegisterRequestJSON) (RegisterResponseJSON, error) {
+	// Convert to old format for now to maintain compatibility
+	requestsData := make([]map[string]interface{}, len(req.Requests))
+	for i, r := range req.Requests {
+		requestsData[i] = map[string]interface{}{
+			"requested_at": r.RequestedAt.Format(time.RFC3339),
+			"command":      r.Command,
+		}
+	}
+
+	oldRequest := map[string]interface{}{
+		"type":        req.Type,
+		"resource_id": req.ResourceID,
+		"requests":    requestsData,
+	}
+
+	response, err := c.sendRequest(oldRequest)
+	if err != nil {
+		return RegisterResponseJSON{}, err
+	}
+
+	// Convert response back to type-safe format
+	resp := RegisterResponseJSON{
+		Type: "register_response",
+	}
+
+	if status, ok := response["status"].(string); ok {
+		resp.Status = status
+	}
+	if message, ok := response["message"].(string); ok {
+		resp.Message = message
+	}
+
+	return resp, nil
 }
