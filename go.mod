@@ -5,6 +5,7 @@ go 1.21.0
 toolchain go1.24.4
 
 require (
+	github.com/mattn/go-sqlite3 v1.14.29
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
