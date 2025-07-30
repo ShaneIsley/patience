@@ -1,0 +1,146 @@
+name: structured_logs
+version: "1.0"
+description: "Structured log patterns for JSON, YAML, and XML formats"
+author: "Patience Team"
+
+patterns:
+  json_error:
+    pattern: "multiline:(?s)\\{[^}]*\"level\"\\s*:\\s*\"ERROR\"[^}]*\\}"
+    description: "Multi-line JSON log with ERROR level"
+    priority: high
+    category: error
+    tags: ["json", "structured", "error"]
+    metadata:
+      format: "json"
+      extract_groups:
+        - name: "timestamp"
+          pattern: "\"timestamp\"\\s*:\\s*\"([^\"]+)\""
+        - name: "message"
+          pattern: "\"message\"\\s*:\\s*\"([^\"]+)\""
+        - name: "error_type"
+          pattern: "\"type\"\\s*:\\s*\"([^\"]+)\""
+
+  yaml_error:
+    pattern: "multiline:(?s)error:\\s*\\n\\s+code:\\s*\\d+\\s*\\n\\s+message:"
+    description: "Multi-line YAML error response"
+    priority: high
+    category: error
+    tags: ["yaml", "structured", "error"]
+    metadata:
+      format: "yaml"
+      extract_groups:
+        - name: "error_code"
+          pattern: "code:\\s*(\\d+)"
+        - name: "message"
+          pattern: "message:\\s*([^\\n]+)"
+
+  xml_error:
+    pattern: "multiline:(?s)<error>.*?<code>\\d+</code>.*?<message>.*?</message>.*?</error>"
+    description: "Multi-line XML error response"
+    priority: high
+    category: error
+    tags: ["xml", "structured", "error"]
+    metadata:
+      format: "xml"
+      extract_groups:
+        - name: "error_code"
+          pattern: "<code>(\\d+)</code>"
+        - name: "message"
+          pattern: "<message>(.*?)</message>"
+        - name: "path"
+          pattern: "<path>(.*?)</path>"
+
+  log_continuation:
+    pattern: "multiline:(?s)\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} ERROR [^\\n]+\\n(\\s+[^\\n]+\\n)+"
+    description: "Log entry with indented continuation lines"
+    priority: medium
+    category: error
+    tags: ["continuation", "indented", "error"]
+    metadata:
+      format: "text"
+      extract_groups:
+        - name: "timestamp"
+          pattern: "(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})"
+        - name: "main_message"
+          pattern: "ERROR ([^\\n]+)"
+        - name: "details"
+          pattern: "\\n(\\s+[^\\n]+)"
+
+  multiline_json_array:
+    pattern: "multiline:(?s)\\[\\s*\\{[^\\]]*\"error\"[^\\]]*\\}\\s*\\]"
+    description: "Multi-line JSON array containing error objects"
+    priority: medium
+    category: error
+    tags: ["json", "array", "error"]
+    metadata:
+      format: "json"
+      extract_groups:
+        - name: "error_objects"
+          pattern: "\\{([^}]*\"error\"[^}]*)\\}"
+
+  docker_build_error:
+    pattern: "multiline:(?s)Step \\d+/\\d+ : .*?\\n.*?npm ERR!.*?\\nThe command.*?returned a non-zero code"
+    description: "Docker build failure with npm errors"
+    priority: high
+    category: error
+    tags: ["docker", "build", "npm", "error"]
+    metadata:
+      scenario: "docker_build_error"
+      extract_groups:
+        - name: "step"
+          pattern: "Step (\\d+/\\d+)"
+        - name: "command"
+          pattern: "The command '([^']+)'"
+        - name: "exit_code"
+          pattern: "returned a non-zero code: (\\d+)"
+
+  k8s_crashloop:
+    pattern: "multiline:(?s)Events:.*?Type\\s+Reason\\s+Age.*?Warning\\s+BackOff.*?Back-off restarting failed container"
+    description: "Kubernetes pod crash loop backoff events"
+    priority: high
+    category: error
+    tags: ["kubernetes", "crashloop", "backoff"]
+    metadata:
+      scenario: "k8s_crashloop"
+      extract_groups:
+        - name: "pod_name"
+          pattern: "Successfully assigned [^/]+/([^\\s]+)"
+        - name: "backoff_count"
+          pattern: "\\(x(\\d+) over"
+
+  db_pool_exhausted:
+    pattern: "multiline:(?s)HikariPool-\\d+ - Connection is not available.*?request timed out.*?Database operation failed"
+    description: "Database connection pool exhaustion"
+    priority: critical
+    category: error
+    tags: ["database", "connection", "pool", "timeout"]
+    metadata:
+      scenario: "db_pool_exhausted"
+      extract_groups:
+        - name: "pool_name"
+          pattern: "(HikariPool-\\d+)"
+        - name: "timeout_ms"
+          pattern: "timed out after (\\d+)ms"
+
+  api_rate_limit_detailed:
+    pattern: "multiline:(?s)HTTP/1\\.1 429 Too Many Requests.*?X-RateLimit-Limit: \\d+.*?\\{.*?\"rate_limit_exceeded\".*?\\}"
+    description: "Detailed API rate limit response with headers and JSON"
+    priority: high
+    category: error
+    tags: ["api", "rate-limit", "http", "json"]
+    metadata:
+      scenario: "api_rate_limit_detailed"
+      extract_groups:
+        - name: "rate_limit"
+          pattern: "X-RateLimit-Limit: (\\d+)"
+        - name: "remaining"
+          pattern: "X-RateLimit-Remaining: (\\d+)"
+        - name: "reset_time"
+          pattern: "X-RateLimit-Reset: (\\d+)"
+        - name: "retry_after"
+          pattern: "Retry-After: (\\d+)"
+
+metadata:
+  documentation: "https://docs.patience.dev/patterns/structured-logs"
+  supported_formats: ["json", "yaml", "xml", "text"]
+  scenarios: ["docker_build_error", "k8s_crashloop", "db_pool_exhausted", "api_rate_limit_detailed"]

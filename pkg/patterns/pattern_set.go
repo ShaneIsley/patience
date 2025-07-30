@@ -207,7 +207,28 @@ func (ps *PatternSet) MatchWithContext(input string, context map[string]interfac
 
 	// Try each pattern in the set
 	for name, pattern := range ps.Patterns {
-		matcher, err := NewJSONPatternMatcher(pattern.Pattern)
+		var matcher PatternMatcher
+		var err error
+
+		// Check if it's a multi-line pattern
+		if strings.HasPrefix(pattern.Pattern, "multiline:") {
+			// Remove the multiline: prefix
+			multilinePattern := strings.TrimPrefix(pattern.Pattern, "multiline:")
+
+			// Check if it's a predefined stack trace pattern
+			if _, exists := stackTracePatterns[multilinePattern]; exists {
+				matcher, err = NewStackTracePatternMatcher(multilinePattern)
+			} else if _, exists := structuredLogPatterns[multilinePattern]; exists {
+				matcher, err = NewStructuredLogPatternMatcher(multilinePattern)
+			} else {
+				// Default to basic multi-line pattern matcher
+				matcher, err = NewMultiLinePatternMatcher(multilinePattern)
+			}
+		} else {
+			// Default to JSON pattern matcher
+			matcher, err = NewJSONPatternMatcher(pattern.Pattern)
+		}
+
 		if err != nil {
 			continue // Skip invalid patterns
 		}

@@ -1,0 +1,105 @@
+name: stacktraces
+version: "1.0"
+description: "Stack trace patterns for common programming languages"
+author: "Patience Team"
+
+patterns:
+  java_exception:
+    pattern: "multiline:(?s)Exception in thread.*?\\n(\\s+at .*?\\n)+"
+    description: "Java exception with stack trace"
+    priority: high
+    category: error
+    tags: ["java", "exception", "stacktrace"]
+    metadata:
+      language: "java"
+      extract_groups:
+        - name: "exception_type"
+          pattern: "Exception in thread \".*?\" ([^:]+)"
+        - name: "message"
+          pattern: "Exception in thread \".*?\" [^:]+: (.*?)\\n"
+        - name: "stack_frames"
+          pattern: "\\s+at ([^\\n]+)"
+
+  python_exception:
+    pattern: "multiline:(?s)Traceback \\(most recent call last\\):.*?\\n([^\\n]+Error: .*?)$"
+    description: "Python exception with traceback"
+    priority: high
+    category: error
+    tags: ["python", "exception", "traceback"]
+    metadata:
+      language: "python"
+      extract_groups:
+        - name: "exception_type"
+          pattern: "([^\\n]+Error): "
+        - name: "message"
+          pattern: "[^\\n]+Error: (.*?)$"
+        - name: "stack_frames"
+          pattern: "File \"([^\"]+)\", line (\\d+), in ([^\\n]+)"
+
+  go_panic:
+    pattern: "multiline:(?s)panic: (.*?)\\n\\[signal.*?\\]\\n\\ngoroutine.*?\\[running\\]:"
+    description: "Go panic with stack trace"
+    priority: high
+    category: error
+    tags: ["go", "panic", "stacktrace"]
+    metadata:
+      language: "go"
+      extract_groups:
+        - name: "panic_message"
+          pattern: "panic: (.*?)\\n"
+        - name: "signal"
+          pattern: "\\[signal ([^\\]]+)\\]"
+        - name: "goroutine_id"
+          pattern: "goroutine (\\d+) \\[running\\]"
+
+  javascript_error:
+    pattern: "multiline:(?s)(\\w+Error): ([^\\n]+)\\n(\\s+at .*?\\n)+"
+    description: "JavaScript error with stack trace"
+    priority: high
+    category: error
+    tags: ["javascript", "error", "stacktrace"]
+    metadata:
+      language: "javascript"
+      extract_groups:
+        - name: "error_type"
+          pattern: "(\\w+Error): "
+        - name: "message"
+          pattern: "\\w+Error: ([^\\n]+)"
+        - name: "stack_frames"
+          pattern: "\\s+at ([^\\n]+)"
+
+  csharp_exception:
+    pattern: "multiline:(?s)Unhandled exception\\. ([^:]+): ([^\\n]+)\\n(\\s+at .*?\\n)+"
+    description: "C# exception with stack trace"
+    priority: high
+    category: error
+    tags: ["csharp", "exception", "stacktrace"]
+    metadata:
+      language: "csharp"
+      extract_groups:
+        - name: "exception_type"
+          pattern: "Unhandled exception\\. ([^:]+): "
+        - name: "message"
+          pattern: "Unhandled exception\\. [^:]+: ([^\\n]+)"
+        - name: "stack_frames"
+          pattern: "\\s+at ([^\\n]+)"
+
+  rust_panic:
+    pattern: "multiline:(?s)thread '.*?' panicked at '([^']+)', ([^\\n]+)\\nstack backtrace:"
+    description: "Rust panic with backtrace"
+    priority: high
+    category: error
+    tags: ["rust", "panic", "backtrace"]
+    metadata:
+      language: "rust"
+      extract_groups:
+        - name: "panic_message"
+          pattern: "thread '.*?' panicked at '([^']+)'"
+        - name: "location"
+          pattern: "panicked at '[^']+', ([^\\n]+)"
+        - name: "thread_name"
+          pattern: "thread '([^']+)' panicked"
+
+metadata:
+  documentation: "https://docs.patience.dev/patterns/stacktraces"
+  supported_languages: ["java", "python", "go", "javascript", "csharp", "rust"]

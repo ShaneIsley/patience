@@ -1,0 +1,205 @@
+name: http_apis
+version: "1.0"
+description: "HTTP API-specific patterns for common services"
+author: "Patience Team"
+
+patterns:
+  github_rate_limit:
+    pattern: "$.message == 'API rate limit exceeded'"
+    description: "GitHub API rate limiting error"
+    priority: high
+    category: rate_limit
+    tags: ["github", "api", "rate-limit"]
+    metadata:
+      api_type: "github"
+      status_codes: [403, 429]
+      required_headers: ["X-RateLimit-Limit"]
+      extract_groups:
+        - name: "rate_limit"
+          pattern: "X-RateLimit-Limit: (\\d+)"
+        - name: "remaining"
+          pattern: "X-RateLimit-Remaining: (\\d+)"
+        - name: "reset_time"
+          pattern: "X-RateLimit-Reset: (\\d+)"
+        - name: "retry_after"
+          pattern: "Retry-After: (\\d+)"
+
+  github_api_error:
+    pattern: "$.message != null && $.documentation_url != null"
+    description: "Generic GitHub API error"
+    priority: medium
+    category: error
+    tags: ["github", "api", "error"]
+    metadata:
+      api_type: "github"
+      status_codes: [400, 401, 403, 404, 422]
+      required_headers: ["X-GitHub-Media-Type"]
+      extract_groups:
+        - name: "error_message"
+          pattern: "\"message\"\\s*:\\s*\"([^\"]+)\""
+        - name: "request_id"
+          pattern: "X-GitHub-Request-Id: ([^\\n]+)"
+
+  aws_throttling:
+    pattern: "$.__type == 'Throttling' || $.Code == 'Throttling'"
+    description: "AWS API throttling error"
+    priority: high
+    category: rate_limit
+    tags: ["aws", "api", "throttling"]
+    metadata:
+      api_type: "aws"
+      status_codes: [400, 429]
+      required_headers: ["X-Amzn-ErrorType"]
+      extract_groups:
+        - name: "error_type"
+          pattern: "X-Amzn-ErrorType: ([^\\n]+)"
+        - name: "request_id"
+          pattern: "X-Amzn-RequestId: ([^\\n]+)"
+        - name: "service"
+          pattern: "https://([^.]+)\\..*\\.amazonaws\\.com"
+
+  aws_access_denied:
+    pattern: "$.__type == 'AccessDenied' || $.Code == 'AccessDenied'"
+    description: "AWS API access denied error"
+    priority: high
+    category: auth_error
+    tags: ["aws", "api", "access-denied"]
+    metadata:
+      api_type: "aws"
+      status_codes: [403]
+      extract_groups:
+        - name: "error_type"
+          pattern: "X-Amzn-ErrorType: ([^\\n]+)"
+        - name: "request_id"
+          pattern: "X-Amzn-RequestId: ([^\\n]+)"
+
+  k8s_forbidden:
+    pattern: "$.kind == 'Status' && $.reason == 'Forbidden'"
+    description: "Kubernetes API forbidden error"
+    priority: high
+    category: auth_error
+    tags: ["kubernetes", "api", "rbac", "forbidden"]
+    metadata:
+      api_type: "kubernetes"
+      status_codes: [403]
+      extract_groups:
+        - name: "resource"
+          pattern: "resource \"([^\"]+)\""
+        - name: "namespace"
+          pattern: "namespace \"([^\"]+)\""
+        - name: "user"
+          pattern: "User \"([^\"]+)\""
+        - name: "verb"
+          pattern: "cannot ([^\\s]+)"
+
+  k8s_not_found:
+    pattern: "$.kind == 'Status' && $.reason == 'NotFound'"
+    description: "Kubernetes API resource not found"
+    priority: medium
+    category: client_error
+    tags: ["kubernetes", "api", "not-found"]
+    metadata:
+      api_type: "kubernetes"
+      status_codes: [404]
+      extract_groups:
+        - name: "resource_type"
+          pattern: "\"([^\"]+)\" not found"
+        - name: "resource_name"
+          pattern: "\"([^\"]+)\" not found"
+
+  k8s_conflict:
+    pattern: "$.kind == 'Status' && $.reason == 'AlreadyExists'"
+    description: "Kubernetes API resource conflict"
+    priority: medium
+    category: client_error
+    tags: ["kubernetes", "api", "conflict"]
+    metadata:
+      api_type: "kubernetes"
+      status_codes: [409]
+      extract_groups:
+        - name: "resource_type"
+          pattern: "([^\\s]+) \"[^\"]+\" already exists"
+        - name: "resource_name"
+          pattern: "[^\\s]+ \"([^\"]+)\" already exists"
+
+  generic_json_error:
+    pattern: "$.error != null || $.message != null"
+    description: "Generic JSON API error response"
+    priority: low
+    category: error
+    tags: ["generic", "api", "json", "error"]
+    metadata:
+      api_type: "generic"
+      status_codes: [400, 401, 403, 404, 422, 500, 502, 503]
+      extract_groups:
+        - name: "error_code"
+          pattern: "\"error\"\\s*:\\s*\"([^\"]+)\""
+        - name: "error_message"
+          pattern: "\"message\"\\s*:\\s*\"([^\"]+)\""
+
+  generic_success:
+    pattern: "$.status == 'success' || $.success == true"
+    description: "Generic JSON API success response"
+    priority: low
+    category: success
+    tags: ["generic", "api", "json", "success"]
+    metadata:
+      api_type: "generic"
+      status_codes: [200, 201, 202]
+      extract_groups:
+        - name: "status"
+          pattern: "\"status\"\\s*:\\s*\"([^\"]+)\""
+
+  rate_limit_detailed:
+    pattern: "multiline:(?s)HTTP/1\\.1 429.*X-RateLimit-Limit: \\d+.*"
+    description: "Detailed rate limit response with headers"
+    priority: high
+    category: rate_limit
+    tags: ["rate-limit", "http", "headers"]
+    metadata:
+      api_type: "generic"
+      status_codes: [429]
+      extract_groups:
+        - name: "rate_limit"
+          pattern: "X-RateLimit-Limit: (\\d+)"
+        - name: "remaining"
+          pattern: "X-RateLimit-Remaining: (\\d+)"
+        - name: "reset_time"
+          pattern: "X-RateLimit-Reset: (\\d+)"
+        - name: "retry_after"
+          pattern: "Retry-After: (\\d+)"
+
+  html_error:
+    pattern: "multiline:(?s)<html>.*<title>.*Error.*</title>.*</html>"
+    description: "HTML error page"
+    priority: low
+    category: error
+    tags: ["html", "error", "web"]
+    metadata:
+      api_type: "web"
+      status_codes: [400, 401, 403, 404, 500, 502, 503]
+      extract_groups:
+        - name: "title"
+          pattern: "<title>([^<]+)</title>"
+        - name: "error_code"
+          pattern: "(\\d{3})\\s+[^<]+"
+
+  xml_error:
+    pattern: "multiline:(?s)<error>.*<code>\\d+</code>.*<message>.*</message>.*</error>"
+    description: "XML error response"
+    priority: medium
+    category: error
+    tags: ["xml", "error", "api"]
+    metadata:
+      api_type: "xml"
+      status_codes: [400, 401, 403, 404, 500]
+      extract_groups:
+        - name: "error_code"
+          pattern: "<code>(\\d+)</code>"
+        - name: "error_message"
+          pattern: "<message>([^<]+)</message>"
+
+metadata:
+  documentation: "https://docs.patience.dev/patterns/http-apis"
+  supported_apis: ["github", "aws", "kubernetes", "generic"]
+  categories: ["rate_limit", "auth_error", "client_error", "server_error", "success"]
