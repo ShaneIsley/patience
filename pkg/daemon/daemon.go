@@ -351,3 +351,19 @@ func IsRunning(pidFile string) (bool, int, error) {
 
 	return true, pid, nil
 }
+
+// Close gracefully shuts down the daemon
+func (d *Daemon) Close() error {
+	if d.cancel != nil {
+		d.cancel()
+	}
+
+	if d.listener != nil {
+		d.listener.Close()
+	}
+
+	// Wait for all goroutines to finish
+	d.wg.Wait()
+
+	return nil
+}

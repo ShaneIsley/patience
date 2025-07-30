@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // HTTPResponse represents a parsed HTTP response
@@ -40,13 +42,13 @@ const (
 
 // HTTPPatternConfig represents configuration for HTTP pattern matching
 type HTTPPatternConfig struct {
-	EnableStatusRouting bool                 `json:"enable_status_routing"`
-	EnableHeaderRouting bool                 `json:"enable_header_routing"`
-	EnableAPIDetection  bool                 `json:"enable_api_detection"`
-	StatusPatterns      map[int]string       `json:"status_patterns"`
-	HeaderPatterns      map[string]string    `json:"header_patterns"`
-	APIPatterns         map[APIType][]string `json:"api_patterns"`
-	DefaultPattern      string               `json:"default_pattern"`
+	EnableStatusRouting bool                 `json:"enable_status_routing" yaml:"enable_status_routing"`
+	EnableHeaderRouting bool                 `json:"enable_header_routing" yaml:"enable_header_routing"`
+	EnableAPIDetection  bool                 `json:"enable_api_detection" yaml:"enable_api_detection"`
+	StatusPatterns      map[int]string       `json:"status_patterns" yaml:"status_patterns"`
+	HeaderPatterns      map[string]string    `json:"header_patterns" yaml:"header_patterns"`
+	APIPatterns         map[APIType][]string `json:"api_patterns" yaml:"api_patterns"`
+	DefaultPattern      string               `json:"default_pattern" yaml:"default_pattern"`
 }
 
 // BackoffRecommendation represents a recommended backoff strategy
@@ -55,6 +57,15 @@ type BackoffRecommendation struct {
 	InitialDelay time.Duration `json:"initial_delay"`
 	MaxRetries   int           `json:"max_retries"`
 	MaxDelay     time.Duration `json:"max_delay,omitempty"`
+}
+
+// EnhancedBackoffRecommendation provides detailed strategy recommendations
+type EnhancedBackoffRecommendation struct {
+	Strategy   string                 `json:"strategy"`
+	Parameters map[string]interface{} `json:"parameters"`
+	Adaptive   bool                   `json:"adaptive"`
+	Confidence float64                `json:"confidence"`
+	Learning   bool                   `json:"learning_enabled"`
 }
 
 // HTTPPatternMatcher implements HTTP-aware pattern matching
@@ -379,6 +390,49 @@ func (h *HTTPPatternMatcher) GetMetrics() MatchMetrics {
 	return h.metrics
 }
 
+// GetEnhancedBackoffRecommendation returns detailed backoff strategy recommendations
+func (h *HTTPPatternMatcher) GetEnhancedBackoffRecommendation(result *HTTPMatchResult) EnhancedBackoffRecommendation {
+	recommendation := EnhancedBackoffRecommendation{
+		Parameters: make(map[string]interface{}),
+		Confidence: 0.8, // Default confidence
+	}
+
+	// Enhanced logic based on API type and pattern matching
+	switch result.APIType {
+	case APITypeGitHub:
+		recommendation.Strategy = "diophantine"
+		recommendation.Adaptive = true
+		recommendation.Learning = true
+		recommendation.Confidence = 0.9
+		recommendation.Parameters["discovery_enabled"] = true
+		recommendation.Parameters["pattern_learning"] = true
+
+	case APITypeAWS:
+		recommendation.Strategy = "polynomial"
+		recommendation.Adaptive = false
+		recommendation.Learning = false
+		recommendation.Confidence = 0.8
+		recommendation.Parameters["degree"] = 2
+		recommendation.Parameters["coefficient"] = 1.5
+
+	case APITypeKubernetes:
+		recommendation.Strategy = "exponential"
+		recommendation.Adaptive = false
+		recommendation.Learning = false
+		recommendation.Confidence = 0.8
+		recommendation.Parameters["multiplier"] = 2.0
+		recommendation.Parameters["jitter"] = true
+
+	default:
+		recommendation.Strategy = "adaptive"
+		recommendation.Adaptive = true
+		recommendation.Learning = false
+		recommendation.Confidence = 0.6
+	}
+
+	return recommendation
+}
+
 // ParseHTTPResponse parses a raw HTTP response string
 func ParseHTTPResponse(rawResponse string) (*HTTPResponse, error) {
 	if rawResponse == "" {
@@ -498,8 +552,80 @@ func ExtractBody(response string) (string, error) {
 
 // LoadHTTPPatternConfigFromYAML loads HTTP pattern configuration from YAML
 func LoadHTTPPatternConfigFromYAML(data []byte) (HTTPPatternConfig, error) {
-	// TODO: Implement YAML configuration loading
-	return HTTPPatternConfig{}, fmt.Errorf("not implemented")
+	var config HTTPPatternConfig
+
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return HTTPPatternConfig{}, fmt.Errorf("failed to parse YAML configuration: %w", err)
+	}
+
+	// Validate the configuration
+	if err := validateHTTPPatternConfig(&config); err != nil {
+		return HTTPPatternConfig{}, fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	return config, nil
+}
+
+// validateHTTPPatternConfig validates the HTTP pattern configuration
+func validateHTTPPatternConfig(config *HTTPPatternConfig) error {
+	// If status routing is enabled, ensure status patterns are provided
+	if config.EnableStatusRouting && len(config.StatusPatterns) == 0 {
+		return fmt.Errorf("status routing enabled but no status patterns provided")
+	}
+
+	// If header routing is enabled, ensure header patterns are provided
+	if config.EnableHeaderRouting && len(config.HeaderPatterns) == 0 {
+		return fmt.Errorf("header routing enabled but no header patterns provided")
+	}
+
+	// If API detection is enabled, ensure API patterns are provided
+	if config.EnableAPIDetection && len(config.APIPatterns) == 0 {
+		return fmt.Errorf("API detection enabled but no API patterns provided")
+	}
+
+	// Validate that status patterns are valid regex
+	for statusCode, pattern := range config.StatusPatterns {
+		if pattern == "" {
+			return fmt.Errorf("empty pattern for status code %d", statusCode)
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid regex pattern for status code %d: %w", statusCode, err)
+		}
+	}
+
+	// Validate that header patterns are valid regex
+	for header, pattern := range config.HeaderPatterns {
+		if pattern == "" {
+			return fmt.Errorf("empty pattern for header %s", header)
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid regex pattern for header %s: %w", header, err)
+		}
+	}
+
+	// Validate API patterns
+	for apiType, patterns := range config.APIPatterns {
+		if len(patterns) == 0 {
+			return fmt.Errorf("empty patterns for API type %s", apiType)
+		}
+		for i, pattern := range patterns {
+			if pattern == "" {
+				return fmt.Errorf("empty pattern at index %d for API type %s", i, apiType)
+			}
+			if _, err := regexp.Compile(pattern); err != nil {
+				return fmt.Errorf("invalid regex pattern at index %d for API type %s: %w", i, apiType, err)
+			}
+		}
+	}
+
+	// Validate default pattern if provided
+	if config.DefaultPattern != "" {
+		if _, err := regexp.Compile(config.DefaultPattern); err != nil {
+			return fmt.Errorf("invalid default pattern: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // extractFromJSONBody extracts API-specific information from JSON response body

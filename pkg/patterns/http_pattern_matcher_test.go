@@ -617,9 +617,230 @@ func TestHTTPPatternMatcher_Performance(t *testing.T) {
 
 	t.Logf("Performance test completed in %v (avg: %v per match)", duration, avgDuration)
 
-	// Target: <100µs per match
+	// Performance target: <100µs per match
 	if avgDuration > 100*time.Microsecond {
-		t.Errorf("HTTPPatternMatcher performance %v exceeds target of 100µs", avgDuration)
+		t.Errorf("Performance target not met: %v > 100µs", avgDuration)
+	}
+}
+
+// TDD Cycle 2.5 - Enhanced Backoff Recommendation Tests
+func TestHTTPPatternMatcher_EnhancedBackoffRecommendations(t *testing.T) {
+	tests := []struct {
+		name                 string
+		response             *HTTPResponse
+		expectedStrategyType string
+		expectedParameters   map[string]interface{}
+		expectedAdaptive     bool
+		expectedLearning     bool
+		expectedConfidence   float64
+	}{
+		{
+			name: "GitHub API - Diophantine with Discovery",
+			response: &HTTPResponse{
+				StatusCode: 403,
+				Headers: map[string]string{
+					"X-RateLimit-Reset":     "1642248600",
+					"X-GitHub-Media-Type":   "github.v3",
+					"X-RateLimit-Remaining": "0",
+				},
+				Body: `{"message": "API rate limit exceeded"}`,
+				URL:  "https://api.github.com/user/repos",
+			},
+			expectedStrategyType: "diophantine",
+			expectedParameters: map[string]interface{}{
+				"discovery_enabled": true,
+				"pattern_learning":  true,
+			},
+			expectedAdaptive:   true,
+			expectedLearning:   true,
+			expectedConfidence: 0.9,
+		},
+		{
+			name: "AWS Throttling - Polynomial Strategy",
+			response: &HTTPResponse{
+				StatusCode: 400,
+				Headers: map[string]string{
+					"X-Amzn-ErrorType": "Throttling",
+					"X-Amzn-RequestId": "abc-123-def",
+				},
+				Body: `{"__type": "Throttling", "message": "Rate exceeded"}`,
+				URL:  "https://dynamodb.us-east-1.amazonaws.com/",
+			},
+			expectedStrategyType: "polynomial",
+			expectedParameters: map[string]interface{}{
+				"degree":      2,
+				"coefficient": 1.5,
+			},
+			expectedAdaptive:   false,
+			expectedLearning:   false,
+			expectedConfidence: 0.8,
+		},
+		{
+			name: "Kubernetes API - Exponential with Jitter",
+			response: &HTTPResponse{
+				StatusCode: 403,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				Body: `{
+					"kind": "Status",
+					"apiVersion": "v1",
+					"status": "Failure",
+					"message": "pods is forbidden",
+					"reason": "Forbidden"
+				}`,
+				URL: "https://kubernetes.default.svc/api/v1/namespaces/default/pods",
+			},
+			expectedStrategyType: "exponential",
+			expectedParameters: map[string]interface{}{
+				"multiplier": 2.0,
+				"jitter":     true,
+			},
+			expectedAdaptive:   false,
+			expectedLearning:   false,
+			expectedConfidence: 0.8,
+		},
+		{
+			name: "Generic API - Adaptive Strategy",
+			response: &HTTPResponse{
+				StatusCode: 500,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				Body: `{"error": "Internal server error"}`,
+				URL:  "https://api.example.com/users",
+			},
+			expectedStrategyType: "adaptive",
+			expectedParameters:   map[string]interface{}{},
+			expectedAdaptive:     true,
+			expectedLearning:     false,
+			expectedConfidence:   0.6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matcher, err := NewHTTPPatternMatcher(DefaultHTTPPatternConfig())
+			if err != nil {
+				t.Errorf("NewHTTPPatternMatcher() error = %v", err)
+				return
+			}
+
+			result, err := matcher.MatchHTTPResponse(tt.response)
+			if err != nil {
+				t.Errorf("MatchHTTPResponse() error = %v", err)
+				return
+			}
+
+			// Get enhanced backoff recommendation
+			recommendation := matcher.GetEnhancedBackoffRecommendation(result)
+
+			if recommendation.Strategy != tt.expectedStrategyType {
+				t.Errorf("Strategy = %v, want %v", recommendation.Strategy, tt.expectedStrategyType)
+			}
+
+			if recommendation.Adaptive != tt.expectedAdaptive {
+				t.Errorf("Adaptive = %v, want %v", recommendation.Adaptive, tt.expectedAdaptive)
+			}
+
+			if recommendation.Learning != tt.expectedLearning {
+				t.Errorf("Learning = %v, want %v", recommendation.Learning, tt.expectedLearning)
+			}
+
+			if recommendation.Confidence != tt.expectedConfidence {
+				t.Errorf("Confidence = %v, want %v", recommendation.Confidence, tt.expectedConfidence)
+			}
+
+			// Verify strategy parameters
+			for key, expectedValue := range tt.expectedParameters {
+				if actualValue, exists := recommendation.Parameters[key]; !exists {
+					t.Errorf("Missing parameter %s", key)
+				} else if actualValue != expectedValue {
+					t.Errorf("Parameter %s = %v, want %v", key, actualValue, expectedValue)
+				}
+			}
+		})
+	}
+}
+
+func TestHTTPPatternMatcher_BackoffStrategyIntegration(t *testing.T) {
+	tests := []struct {
+		name                 string
+		response             *HTTPResponse
+		expectedBackoffType  string
+		expectedInitialDelay time.Duration
+		expectedMaxRetries   int
+	}{
+		{
+			name: "Rate Limited Response - Fixed Delay",
+			response: &HTTPResponse{
+				StatusCode: 429,
+				Headers: map[string]string{
+					"Retry-After": "60",
+				},
+				Body: `{"error": "rate limited"}`,
+			},
+			expectedBackoffType:  "fixed",
+			expectedInitialDelay: 60 * time.Second,
+			expectedMaxRetries:   3,
+		},
+		{
+			name: "Server Error - Exponential Backoff",
+			response: &HTTPResponse{
+				StatusCode: 500,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				Body: `{"error": "internal server error"}`,
+			},
+			expectedBackoffType:  "exponential",
+			expectedInitialDelay: 1 * time.Second,
+			expectedMaxRetries:   5,
+		},
+		{
+			name: "Client Error - No Retry",
+			response: &HTTPResponse{
+				StatusCode: 400,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+				Body: `{"error": "bad request"}`,
+			},
+			expectedBackoffType:  "none",
+			expectedInitialDelay: 0,
+			expectedMaxRetries:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matcher, err := NewHTTPPatternMatcher(DefaultHTTPPatternConfig())
+			if err != nil {
+				t.Errorf("NewHTTPPatternMatcher() error = %v", err)
+				return
+			}
+
+			result, err := matcher.MatchHTTPResponse(tt.response)
+			if err != nil {
+				t.Errorf("MatchHTTPResponse() error = %v", err)
+				return
+			}
+
+			// Get standard backoff recommendation
+			backoffRec := matcher.GetBackoffRecommendation(result)
+
+			if backoffRec.Strategy != tt.expectedBackoffType {
+				t.Errorf("Backoff strategy = %v, want %v", backoffRec.Strategy, tt.expectedBackoffType)
+			}
+
+			if backoffRec.InitialDelay != tt.expectedInitialDelay {
+				t.Errorf("Initial delay = %v, want %v", backoffRec.InitialDelay, tt.expectedInitialDelay)
+			}
+
+			if backoffRec.MaxRetries != tt.expectedMaxRetries {
+				t.Errorf("Max retries = %v, want %v", backoffRec.MaxRetries, tt.expectedMaxRetries)
+			}
+		})
 	}
 }
 
@@ -763,3 +984,4 @@ func TestHTTPPatternMatcher_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
