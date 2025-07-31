@@ -107,14 +107,14 @@ patience http-aware --fallback fibonacci -- \
 
 ```bash
 # Retry a failing curl request with exponential backoff
-patience exponential --attempts 5 --base-delay 1s -- curl -f https://api.example.com/status
+patience exponential --attempts 5 --base-delay 1s -- curl -f https://httpbin.org/status/503
 
 # API call with custom multiplier and timeout protection
 patience exponential --base-delay 500ms --multiplier 1.5 --max-delay 10s --timeout 30s -- \
-  curl -X POST -d '{"key":"value"}' https://api.example.com/data
+  curl -X POST -d '{"key":"value"}' https://httpbin.org/post
 
 # Using abbreviation
-patience exp -b 1s -x 2.0 -m 30s -- curl https://api.example.com
+patience exp -b 1s -x 2.0 -m 30s -- curl https://httpbin.org/delay/1
 ```
 
 ### Linear Backoff (Good for Rate-Limited APIs)

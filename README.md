@@ -54,7 +54,7 @@ go build -o patience ./cmd/patience
 ./patience http-aware -- curl -i https://httpbin.org/delay/2
 
 # Mathematical proactive rate limiting (prevents rate limit violations)
-./patience diophantine --rate-limit 100 --window 1h -- curl https://api.example.com
+./patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
 
 # Success! Your command now has patience
 ```
@@ -84,7 +84,7 @@ patience fixed --attempts 5 --delay 1s -- npm test
 **Multi-Instance Rate Limiting:**
 ```bash
 # Coordinate across multiple instances to prevent rate limit violations
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://api.example.com
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
 ```
 
 ### 4. Next Steps
@@ -186,7 +186,7 @@ Use `--success-pattern` to define when a command should be considered successful
 patience --success-pattern "deployment successful" -- kubectl apply -f deployment.yaml
 
 # API responses that indicate success
-patience --success-pattern "\"status\":\"ok\"" -- curl -s https://api.example.com/status
+patience --success-pattern "\"status\":\"ok\"" -- curl -s https://httpbin.org/json
 
 # Multiple success indicators (regex OR)
 patience --success-pattern "(success|completed|ready)" -- health-check.sh
@@ -249,7 +249,7 @@ The HTTP-aware strategy is patience's flagship feature - it intelligently parses
 patience http-aware -- curl -i https://api.github.com/user
 
 # With fallback strategy when no HTTP info available
-patience http-aware --fallback exponential -- curl https://api.example.com
+patience http-aware --fallback exponential -- curl https://httpbin.org/delay/2
 
 # Set maximum delay cap
 patience http-aware --max-delay 5m -- curl https://api.slow-service.com

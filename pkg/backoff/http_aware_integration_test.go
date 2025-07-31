@@ -220,7 +220,7 @@ Rate limited`,
 
 		// This should demonstrate that HTTP timing is being used
 		// The test will fail because the executor doesn't call ProcessCommandOutput
-		result, err := executor.Run([]string{"curl", "-f", "https://api.example.com"})
+		result, err := executor.Run([]string{"curl", "-f", "https://httpbin.org/status/429"})
 		require.NoError(t, err)
 
 		// Verify that HTTP timing was used (2 second delay from Retry-After)
@@ -416,7 +416,7 @@ func TestHTTPAwareBackoffStrategySelection(t *testing.T) {
 					"Content-Type": "application/json",
 				},
 				Body: `{"error": "Internal server error", "code": 500}`,
-				URL:  "https://api.example.com/users",
+				URL:  "https://httpbin.org/json",
 			},
 			expectedStrategy: "adaptive",
 			expectedParams: map[string]interface{}{

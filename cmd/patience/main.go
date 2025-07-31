@@ -130,14 +130,14 @@ EXAMPLES:
   patience http-aware --fallback exponential -- curl -i https://api.github.com
 
   # Exponential backoff with custom parameters
-  patience exponential --base-delay 1s --multiplier 2.0 -- curl https://api.stripe.com
+  patience exponential --base-delay 1s --multiplier 2.0 -- curl https://httpbin.org/delay/2
 
   # Linear backoff for database connections
   patience linear --increment 5s --max-delay 60s -- psql -h db.example.com
 
   # Using abbreviations for brevity
   patience ha -f exp -- curl -i https://api.github.com
-  patience exp -b 1s -x 2.0 -- curl https://api.stripe.com`,
+  patience exp -b 1s -x 2.0 -- curl https://httpbin.org/status/503`,
 }
 
 func init() {

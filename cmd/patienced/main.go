@@ -13,11 +13,11 @@ import (
 
 var (
 	configFile  = flag.String("config", "", "Configuration file path")
-	socketPath  = flag.String("socket", "/tmp/patience-daemon.sock", "Unix socket path")
+	socketPath  = flag.String("socket", "/var/run/patience/daemon.sock", "Unix socket path")
 	httpPort    = flag.Int("port", 8080, "HTTP server port")
 	maxMetrics  = flag.Int("max-metrics", 10000, "Maximum number of metrics to store")
 	maxAge      = flag.Duration("max-age", 24*time.Hour, "Maximum age of metrics")
-	pidFile     = flag.String("pid-file", "/tmp/patience-daemon.pid", "PID file path")
+	pidFile     = flag.String("pid-file", "/var/run/patience/daemon.pid", "PID file path")
 	logLevel    = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
 	enableHTTP  = flag.Bool("enable-http", true, "Enable HTTP API server")
 	enableProf  = flag.Bool("enable-profiling", false, "Enable profiling endpoints")
@@ -33,7 +33,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("retryd version %s\n", version)
+		fmt.Printf("patienced version %s\n", version)
 		os.Exit(0)
 	}
 
@@ -97,7 +97,7 @@ func loadConfiguration() (*daemon.Config, error) {
 	}
 
 	// Override with command line flags (always apply if config file wasn't loaded)
-	if *configFile == "" || *socketPath != "/tmp/patience-daemon.sock" {
+	if *configFile == "" || *socketPath != "/var/run/patience/daemon.sock" {
 		config.SocketPath = *socketPath
 	}
 	if *configFile == "" || *httpPort != 8080 {
@@ -109,7 +109,7 @@ func loadConfiguration() (*daemon.Config, error) {
 	if *configFile == "" || *maxAge != 24*time.Hour {
 		config.MetricsMaxAge = *maxAge
 	}
-	if *configFile == "" || *pidFile != "/tmp/patience-daemon.pid" {
+	if *configFile == "" || *pidFile != "/var/run/patience/daemon.pid" {
 		config.PidFile = *pidFile
 	}
 	if *configFile == "" || *logLevel != "info" {
@@ -239,7 +239,7 @@ func createExampleConfig(filename string) error {
 func init() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "retryd - Retry metrics collection daemon\n\n")
+		fmt.Fprintf(os.Stderr, "patienced - Patience retry metrics collection daemon\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
@@ -247,8 +247,8 @@ func init() {
 		fmt.Fprintf(os.Stderr, "  %s -daemon                  # Start as background daemon\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -status                  # Show daemon status\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -stop                    # Stop running daemon\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -config /etc/retryd.json # Use custom config file\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "\nThe daemon listens on a Unix socket for metrics from retry CLI instances\n")
+		fmt.Fprintf(os.Stderr, "  %s -config /etc/patienced.json # Use custom config file\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nThe daemon listens on a Unix socket for metrics from patience CLI instances\n")
 		fmt.Fprintf(os.Stderr, "and provides an HTTP API for accessing aggregated statistics.\n")
 	}
 }
