@@ -32,7 +32,7 @@ The system consists of three main components:
 │  ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────────┐ │
 │  │   User Command  │    │   patience CLI   │    │   Target Command       │ │
 │  │                 │───▶│                  │───▶│                         │ │
-│  │ patience exp    │    │ ┌──────────────┐ │    │ curl api.example.com    │ │
+│  │ patience exp    │    │ ┌──────────────┐ │    │ curl httpbin.org/delay/2│ │
 │  │ --attempts 5    │    │ │   Strategy   │ │    │                         │ │
 │  │ -- curl api.com │    │ │   Selection  │ │    │ ┌─────────────────────┐ │ │
 │  └─────────────────┘    │ └──────────────┘ │    │ │    HTTP Response    │ │ │

@@ -75,7 +75,7 @@ Create a configuration file at `/usr/local/etc/patience/daemon.json`:
 
 ```json
 {
-  "socket_path": "/tmp/patience-daemon.sock",
+  "socket_path": "/var/run/patience/daemon.sock",
   "http_port": 8080,
   "max_metrics": 10000,
   "metrics_max_age": "24h",
@@ -90,12 +90,11 @@ Create a configuration file at `/usr/local/etc/patience/daemon.json`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `socket_path` | string | `/tmp/patience-daemon.sock` | Unix socket path for metrics collection |
-| `http_port` | int | `8080` | HTTP server port |
+| `socket_path` | string | `/var/run/patience/daemon.sock` | Unix socket path for metrics collection |
 | `max_metrics` | int | `10000` | Maximum number of metrics to store |
 | `metrics_max_age` | duration | `24h` | Maximum age of stored metrics |
 | `log_level` | string | `info` | Log level (debug, info, warn, error) |
-| `pid_file` | string | `/tmp/patience-daemon.pid` | PID file location |
+| `pid_file` | string | `/var/run/patience/daemon.pid` | PID file location |
 | `enable_http` | bool | `true` | Enable HTTP API server |
 | `enable_profiling` | bool | `false` | Enable profiling endpoints |
 
@@ -190,11 +189,11 @@ Options:
   -max-metrics int
         Maximum number of metrics to store (default 10000)
   -pid-file string
-        PID file path (default "/tmp/patience-daemon.pid")
+        PID file path (default "/var/run/patience/daemon.pid")
   -port int
         HTTP server port (default 8080)
   -socket string
-        Unix socket path (default "/tmp/patience-daemon.sock")
+        Unix socket path (default "/var/run/patience/daemon.sock")
   -status
         Show daemon status
   -stop
@@ -274,7 +273,7 @@ When using the `--daemon` flag with the Diophantine strategy, patience instances
 
 ```bash
 # Enable daemon coordination for shared rate limiting
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 100 --window 1h -- curl https://api.example.com
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
 ```
 
 The daemon handles:
@@ -360,12 +359,11 @@ Monitor daemon performance via:
 
 1. **Permission denied on socket**:
    ```bash
-   # Check socket permissions
-   ls -la /tmp/patience-daemon.sock
-   
-   # Fix permissions if needed
-   sudo chmod 666 /tmp/patience-daemon.sock
-   ```
+    # Check socket permissions
+    ls -la /var/run/patience/daemon.sock
+    
+    # Fix permissions if needed
+    sudo chmod 666 /var/run/patience/daemon.sock   ```
 
 2. **Port already in use**:
    ```bash

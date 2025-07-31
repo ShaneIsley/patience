@@ -126,17 +126,14 @@ The basic syntax is: `patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]`
 patience http-aware -- curl -i https://api.github.com/user
 
 # Exponential backoff with custom parameters
-patience exponential --base-delay 1s --multiplier 2.0 -- curl https://api.stripe.com
+patience exponential --base-delay 1s --multiplier 2.0 -- curl https://httpbin.org/delay/2
 
 # Linear backoff for database connections
 patience linear --increment 2s --max-delay 30s -- psql -h db.example.com
 
-# Fixed delay for simple patience
-patience fixed --delay 5s -- flaky-script.sh
-
 # Using abbreviations for brevity
 patience ha -f exp -- curl -i https://api.github.com
-patience exp -b 1s -x 2.0 -- curl https://api.stripe.com
+patience exp -b 1s -x 2.0 -- curl https://httpbin.org/status/503
 ```
 
 ### Available Strategies
@@ -353,16 +350,16 @@ Mathematical proactive rate limiting using Diophantine inequalities to prevent r
 
 ```bash
 # Basic proactive rate limiting
-patience diophantine --rate-limit 100 --window 1h -- curl https://api.example.com
+patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
 
 # Multi-instance coordination via daemon
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://api.example.com
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
 
 # Custom retry patterns within mathematical constraints
 patience diophantine --rate-limit 1000 --window 1h --retry-offsets "1s,5s,15s" -- api-call.sh
 
 # Enterprise deployment with daemon coordination
-patience diophantine --daemon --daemon-address "/tmp/patience-daemon.sock" --resource-id "production-api" --rate-limit 500 --window 1h -- production-script.sh
+patience diophantine --daemon --daemon-address "/var/run/patience/daemon.sock" --resource-id "production-api" --rate-limit 500 --window 1h -- production-script.sh
 ```
 
 ### Strategy Comparison
@@ -532,7 +529,7 @@ This shows the source of each configuration value (CLI flag, environment variabl
 | `--window` | `-w` | `1h` | Time window for rate limiting (e.g., 1h, 30m, 60s) |
 | `--retry-offsets` | `-o` | `1s,5s,15s` | Comma-separated retry timing offsets |
 | `--daemon` | `-d` | `false` | Enable daemon coordination for multi-instance rate limiting |
-| `--daemon-address` | `-a` | `/tmp/patience-daemon.sock` | Unix socket path for daemon communication |
+| `--daemon-address` | `-a` | `/var/run/patience/daemon.sock` | Unix socket path for daemon communication |
 | `--resource-id` | `-r` | | Resource identifier for shared rate limiting (derived from command if not specified) |
 
 ## How It Works
@@ -566,13 +563,13 @@ This shows the source of each configuration value (CLI flag, environment variabl
 ### Examples:
 ```bash
 # If API is up on attempt 1, attempts 2-5 are skipped
-patience exponential --attempts 5 -- curl https://api.example.com/health
+patience exponential --attempts 5 -- curl https://httpbin.org/status/200
 
 # Only has patience while the service is starting up
 patience linear --attempts 10 --increment 1s -- nc -z localhost 8080
 
 # This stops immediately if the first curl succeeds
-patience http-aware --attempts 5 -- curl https://api.example.com
+patience http-aware --attempts 5 -- curl https://httpbin.org/status/200
 # Output: "✅ Command succeeded after 1 attempt" (attempts 2-5 never run)
 ```
 
@@ -584,12 +581,12 @@ Switching from other retry tools? Here's how to migrate common patterns to patie
 
 **Old:**
 ```bash
-retry -t 5 -d 2 curl https://api.example.com
+retry -t 5 -d 2 curl https://httpbin.org/status/503
 ```
 
 **New:**
 ```bash
-patience fixed --attempts 5 --delay 2s -- curl https://api.example.com
+patience fixed --attempts 5 --delay 2s -- curl https://httpbin.org/status/503
 ```
 
 ### From `retries` (Python)
@@ -603,7 +600,7 @@ def api_call():
 
 **New:**
 ```bash
-patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl https://api.example.com
+patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl https://httpbin.org/status/503
 ```
 
 ### From `exponential-backoff` (npm)
@@ -622,7 +619,7 @@ patience exponential --base-delay 1s --max-delay 30s -- curl api.com
 
 **Old:**
 ```bash
-while ! curl https://api.example.com; do
+while ! curl https://httpbin.org/status/503; do
   echo "Retrying in 5 seconds..."
   sleep 5
 done
@@ -630,7 +627,7 @@ done
 
 **New:**
 ```bash
-patience fixed --delay 5s -- curl https://api.example.com
+patience fixed --delay 5s -- curl https://httpbin.org/status/503
 ```
 
 ### From AWS CLI retry
@@ -696,7 +693,7 @@ go test -race ./...
 go test ./cmd/patience -v
 
 # Run HTTP-aware strategy tests
-go test ./pkg/backoff -v -run TestHTTPAware
+go test -v ./pkg/backoff -run TestHTTPAware
 ```
 
 ### Building

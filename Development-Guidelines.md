@@ -12,7 +12,7 @@
 - `go mod tidy` - Clean up dependencies
 - `gofmt -w .` - Format all Go files
 - `goimports -w .` - Format and organize imports
-- `golangci-lint run` - Run linter (requires .golangci.yml config)
+- `golangci-lint run --config=.golangci.yml` - Run linter
 
 ## Test Categories & Coverage Requirements
 
@@ -149,6 +149,6 @@ PATIENCE_ATTEMPTS=5 ./patience fixed -- echo "test"
 
 ### Critical Integration Requirements
 - **HTTP-Aware**: Executor calls `strategy.ProcessCommandOutput(stdout, stderr, exitCode)` after each command ✅
-- **Adaptive**: Executor integration with `strategy.RecordOutcome(delay, success, latency)` for learning ⚠️ (Method exists but not called by executor)
+- **Adaptive**: Executor integration with `strategy.RecordOutcome(delay, success, latency)` for learning ✅
 - **CLI Testing**: `createTestRootCommand()` must register ALL strategy subcommands ✅
 - **All Strategies**: Executor calls `strategy.Delay(attempt)` for backoff timing ✅

@@ -53,7 +53,7 @@ patience diophantine --daemon --resource-id "salesforce-api" \
 # Stripe API coordination across payment services
 patience diophantine --daemon --resource-id "stripe-api" \
   --rate-limit 100 --window 1s --retry-offsets "1s,3s,10s" -- \
-  curl -u $STRIPE_SECRET_KEY: https://api.stripe.com/v1/charges
+  curl -H "Authorization: Bearer $API_TOKEN" https://httpbin.org/bearer
 
 # Docker Hub API for CI/CD systems
 patience diophantine --daemon --resource-id "dockerhub-api" \
@@ -78,7 +78,7 @@ patience http-aware --fallback exponential -- curl -i https://api.twitter.com/2/
 patience http-aware --fallback decorrelated-jitter -- aws s3 ls
 
 # Using abbreviation for brevity
-patience ha -f exp -- curl -i https://api.stripe.com/v1/charges
+patience ha -f exp -- curl -i https://httpbin.org/bearer
 ```
 
 ### Real-World HTTP Examples
@@ -125,7 +125,7 @@ patience linear --increment 2s --max-delay 30s -- curl https://api.rate-limited.
 
 # Database API with gradual backoff
 patience linear --increment 5s --attempts 6 -- \
-  curl -H "Authorization: Bearer $TOKEN" https://db-api.example.com/query
+  curl -H "Authorization: Bearer $TOKEN" https://httpbin.org/bearer
 ```
 
 ### Fixed Delay (Simple and Predictable)
@@ -135,7 +135,7 @@ patience linear --increment 5s --attempts 6 -- \
 patience fixed --delay 3s --attempts 3 -- wget https://releases.example.com/package.tar.gz
 
 # Simple retry with consistent timing
-patience fixed --delay 5s -- curl https://simple-api.example.com
+patience fixed --delay 5s -- curl https://httpbin.org/delay/1
 ```
 
 ## Development & Testing
@@ -638,7 +638,7 @@ patience diophantine --rate-limit 100 --window 15m --retry-offsets 0,2m,5m,10m -
 
 ```bash
 # HTTP-aware retry (recommended for APIs)
-patience http-aware -- curl -f https://api.example.com
+patience http-aware -- curl -f https://httpbin.org/status/503
 
 # Exponential backoff for network operations
 patience exponential --base-delay 1s --attempts 5 -- curl -f https://example.com
@@ -693,7 +693,7 @@ patience exponential --attempts 5 --base-delay 500ms --max-delay 10s --timeout 3
 ```bash
 # HTTP-aware with success pattern
 patience http-aware --success-pattern "\"status\":\"ok\"" -- \
-  curl -s https://api.example.com/status
+  curl -s https://httpbin.org/json
 
 # Exponential backoff with failure pattern
 patience exponential --failure-pattern "(?i)error|timeout" --base-delay 2s -- \

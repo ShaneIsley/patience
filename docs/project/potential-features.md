@@ -81,7 +81,7 @@ Common database and service connectivity patterns:
 Simplify common use cases with predefined pattern collections:
 ```bash
 # Instead of complex regex, use shortcuts
-patience --pattern-set api-json -- curl api.example.com
+patience --pattern-set api-json -- curl httpbin.org/json
 patience --pattern-set k8s-deploy -- kubectl apply -f deployment.yaml
 patience --pattern-set health-check -- ./health-check.sh
 ```
