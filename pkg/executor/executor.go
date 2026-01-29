@@ -82,11 +82,11 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 	// Process cleanup improvement: Set process group for better signal handling
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Network timeout reliability: Set environment variables for faster DNS resolution
-	cmd.Env = append(os.Environ(),
-		"CURL_CA_BUNDLE=", // Disable CA bundle lookup for faster curl operations
-		"CURL_TIMEOUT=10", // Set curl-specific timeout
-	)
+	// Inherit parent environment without modifications
+	// Note: Previously set CURL_CA_BUNDLE="" which disabled TLS certificate validation,
+	// creating a security vulnerability. Users should configure curl timeouts explicitly
+	// via command arguments if needed (e.g., curl --connect-timeout 10)
+	cmd.Env = os.Environ()
 
 	// Capture stdout and stderr while also forwarding to terminal
 	// Use limited buffers for large outputs

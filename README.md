@@ -14,12 +14,12 @@ We've all been there – a deployment script fails because of a temporary networ
 
 - **Strategy-based interface** – Choose the right backoff strategy for your use case
 - **HTTP-aware patience** – Respects `Retry-After` headers and server timing hints
-- **11 backoff strategies** – From simple fixed delays to mathematical proactive rate limiting
+- **10 backoff strategies** – From simple fixed delays to mathematical proactive rate limiting
 - **Diophantine strategy** – Mathematical proactive rate limiting with multi-instance coordination
 - **Intelligent pattern matching** – Define success/failure based on output patterns, not just exit codes
 - **Timeout protection** – Prevent commands from hanging indefinitely
 - **Preserves behavior** – Your command's output and exit codes work exactly as expected
-- **Zero dependencies** – Single binary that works anywhere
+- **Minimal dependencies** – Single binary with vendored dependencies
 - **Unix Socket Daemon** – Real daemon server with JSON protocol for multi-instance coordination
 - **Metrics Daemon (Optional)** – Collect and visualize patience metrics with the [`patienced` daemon](DAEMON.md)
 
