@@ -113,14 +113,18 @@ func (d *Daemon) Start() error {
 	}
 
 	// Create Unix domain socket listener
+	// NOTE: This duplicates functionality from UnixServer. Consider refactoring
+	// to use UnixServer for socket handling to reduce code duplication.
 	listener, err := net.Listen("unix", d.config.SocketPath)
 	if err != nil {
 		return fmt.Errorf("failed to create socket listener: %w", err)
 	}
 	d.listener = listener
 
-	// Set socket permissions
-	if err := os.Chmod(d.config.SocketPath, 0666); err != nil {
+	// Set socket permissions - restrict to owner only for security
+	// Using 0600 ensures only the daemon owner can read/write to the socket,
+	// preventing unauthorized users from sending metrics or interfering with rate limiting
+	if err := os.Chmod(d.config.SocketPath, 0600); err != nil {
 		d.logger.Warn("failed to set socket permissions", "error", err)
 	}
 

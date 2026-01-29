@@ -129,50 +129,112 @@ func (h *HTTPAware) parseRateLimitHeaders(output string) time.Duration {
 
 // parseJSONResponse extracts retry timing from JSON response bodies
 func (h *HTTPAware) parseJSONResponse(output string) time.Duration {
+	// Limit search to first 10KB to avoid processing huge outputs
+	const maxSearchSize = 10 * 1024
+	if len(output) > maxSearchSize {
+		output = output[:maxSearchSize]
+	}
+
 	// Look for JSON-like content
 	if !strings.Contains(output, "{") {
 		return 0
 	}
 
-	// Try to find JSON in the output
-	start := strings.Index(output, "{")
-	if start == -1 {
-		return 0
-	}
+	// Try to find balanced JSON objects and parse each one
+	// This is more robust than first-{ to last-} which can span unrelated content
+	retryFields := []string{"retry_after", "retry_after_seconds", "retryAfter", "retryAfterSeconds", "retry_in"}
 
-	// Find the end of the JSON (simple heuristic)
-	end := strings.LastIndex(output, "}")
-	if end == -1 || end <= start {
-		return 0
-	}
+	start := 0
+	for {
+		// Find next potential JSON start
+		jsonStart := strings.Index(output[start:], "{")
+		if jsonStart == -1 {
+			break
+		}
+		jsonStart += start
 
-	jsonStr := output[start : end+1]
+		// Find matching closing brace using brace counting
+		jsonEnd := findMatchingBrace(output, jsonStart)
+		if jsonEnd == -1 {
+			start = jsonStart + 1
+			continue
+		}
 
-	// Parse JSON and look for retry timing fields
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		return 0
-	}
+		jsonStr := output[jsonStart : jsonEnd+1]
 
-	// Check common retry timing field names
-	retryFields := []string{"retry_after", "retry_after_seconds", "retryAfter", "retryAfterSeconds"}
+		// Try to parse this JSON object
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			start = jsonStart + 1
+			continue
+		}
 
-	for _, field := range retryFields {
-		if value, exists := data[field]; exists {
-			switch v := value.(type) {
-			case float64:
-				return time.Duration(v) * time.Second
-			case int:
-				return time.Duration(v) * time.Second
-			case string:
-				if seconds, err := strconv.Atoi(v); err == nil {
-					return time.Duration(seconds) * time.Second
+		// Check for retry timing fields in this JSON object
+		for _, field := range retryFields {
+			if value, exists := data[field]; exists {
+				switch v := value.(type) {
+				case float64:
+					return time.Duration(v) * time.Second
+				case int:
+					return time.Duration(v) * time.Second
+				case string:
+					if seconds, err := strconv.Atoi(v); err == nil {
+						return time.Duration(seconds) * time.Second
+					}
 				}
+			}
+		}
+
+		// This JSON didn't have retry fields, try next one
+		start = jsonEnd + 1
+	}
+
+	return 0
+}
+
+// findMatchingBrace finds the index of the closing brace that matches the opening brace at start
+func findMatchingBrace(s string, start int) int {
+	if start >= len(s) || s[start] != '{' {
+		return -1
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i := start; i < len(s); i++ {
+		c := s[i]
+
+		if escaped {
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && inString {
+			escaped = true
+			continue
+		}
+
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+
+		if inString {
+			continue
+		}
+
+		if c == '{' {
+			depth++
+		} else if c == '}' {
+			depth--
+			if depth == 0 {
+				return i
 			}
 		}
 	}
 
-	return 0
+	return -1 // No matching brace found
 }
 
 // capDelay applies the maximum delay cap
