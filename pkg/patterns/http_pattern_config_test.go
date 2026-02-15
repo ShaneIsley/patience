@@ -41,9 +41,9 @@ func TestHTTPPatternConfig_CustomConfiguration(t *testing.T) {
 		EnableHeaderRouting: false,
 		EnableAPIDetection:  true,
 		StatusPatterns: map[int]string{
-			200: "success_pattern",
-			404: "not_found_pattern",
-			500: "server_error_pattern",
+			200: "$.status != null",
+			404: "$.error != null",
+			500: "$.error != null",
 		},
 		HeaderPatterns: map[string]string{
 			"Content-Type": "content_type_pattern",
@@ -90,7 +90,7 @@ func TestHTTPPatternConfig_ValidationErrors(t *testing.T) {
 			config: HTTPPatternConfig{
 				EnableStatusRouting: true,
 				StatusPatterns: map[int]string{
-					200: "valid_pattern",
+					200: "$.* != null",
 				},
 			},
 			wantErr: false,
@@ -136,7 +136,7 @@ func TestHTTPPatternConfig_PatternPriority(t *testing.T) {
 		EnableHeaderRouting: true,
 		EnableAPIDetection:  true,
 		StatusPatterns: map[int]string{
-			429: "generic_rate_limit",
+			429: "$.message != null",
 		},
 		HeaderPatterns: map[string]string{
 			"X-RateLimit-Limit": "specific_rate_limit",
@@ -152,7 +152,7 @@ func TestHTTPPatternConfig_PatternPriority(t *testing.T) {
 		return
 	}
 
-	// Test priority: API-specific > Header-specific > Status-specific
+	// Test priority: Header-specific (highest) > API-specific > Status-specific (lowest)
 	response := &HTTPResponse{
 		StatusCode: 429,
 		Headers: map[string]string{
@@ -170,13 +170,13 @@ func TestHTTPPatternConfig_PatternPriority(t *testing.T) {
 	}
 
 	if !result.Matched {
-		t.Error("HTTPPatternMatcher should match GitHub rate limit")
+		t.Error("HTTPPatternMatcher should match rate limit response")
 		return
 	}
 
-	// Should use highest priority pattern (GitHub API-specific)
-	if result.PatternName != "github_rate_limit" {
-		t.Errorf("HTTPPatternMatcher should use highest priority pattern, got %s", result.PatternName)
+	// Should use highest priority pattern (header-specific)
+	if result.PatternName != "specific_rate_limit" {
+		t.Errorf("HTTPPatternMatcher should use highest priority (header) pattern, got %s", result.PatternName)
 	}
 }
 

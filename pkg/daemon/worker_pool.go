@@ -73,17 +73,21 @@ func (wp *WorkerPool) Stop() {
 		wp.mu.Unlock()
 		return
 	}
+	// Mark as not started while holding the lock so that concurrent
+	// SubmitConnection calls will be rejected before they attempt to
+	// write to the job queue channel.
+	wp.started = false
 	wp.mu.Unlock()
 
 	wp.logger.Info("stopping worker pool")
 
-	// Cancel context to signal workers to stop
+	// Cancel context to signal workers to stop via the ctx.Done() select case.
+	// We intentionally do NOT close jobQueue because SubmitConnection may
+	// have already passed the started check and be about to send on the channel.
+	// Closing a channel while another goroutine sends on it causes a panic.
 	wp.cancel()
 
-	// Close job queue to prevent new jobs
-	close(wp.jobQueue)
-
-	// Wait for all workers to finish
+	// Wait for all workers to finish (they exit via ctx.Done())
 	wp.workerWg.Wait()
 
 	wp.logger.Info("worker pool stopped")

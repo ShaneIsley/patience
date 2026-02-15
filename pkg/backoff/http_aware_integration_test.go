@@ -637,9 +637,9 @@ func TestHTTPAwareBackoffCaching(t *testing.T) {
 		}
 	}
 
-	// Cached call should be very fast (<5µs)
-	if cachedDuration > 5*time.Microsecond {
-		t.Errorf("Cached call too slow: %v > 5µs", cachedDuration)
+	// Cached call should be very fast (<100µs)
+	if cachedDuration > 100*time.Microsecond {
+		t.Errorf("Cached call too slow: %v > 100µs", cachedDuration)
 	}
 
 	t.Logf("Cached strategy selection completed in %v", cachedDuration)

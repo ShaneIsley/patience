@@ -139,6 +139,14 @@ func (ep *EnhancedParser) enhanceDiscoveryResult(result *DiscoveryResult, stdout
 		result.Info.Path = path
 	}
 
+	// If the base parser didn't extract a rate limit, try enhanced headers
+	if result.Info.Limit == 0 {
+		headers := ep.extractEnhancedHeaders(output)
+		if ep.hasEnhancedRateLimitInfo(headers) {
+			ep.populateFromEnhancedHeaders(result.Info, headers, output)
+		}
+	}
+
 	// Look for additional rate limit indicators
 	if ep.hasRateLimitIndicators(output) {
 		result.Confidence = min(result.Confidence+0.1, 1.0)

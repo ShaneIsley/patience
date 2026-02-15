@@ -29,11 +29,13 @@ type ScheduleRequestJSON struct {
 
 // ScheduleResponseJSON represents a response to a schedule request in JSON protocol
 type ScheduleResponseJSON struct {
-	Type        string    `json:"type"`
-	Status      string    `json:"status"`
-	Message     string    `json:"message,omitempty"`
-	ScheduledAt time.Time `json:"scheduled_at,omitempty"`
-	ExpiresAt   time.Time `json:"expires_at,omitempty"`
+	Type         string    `json:"type"`
+	Status       string    `json:"status"`
+	CanSchedule  bool      `json:"can_schedule"`
+	Reason       string    `json:"reason,omitempty"`
+	Message      string    `json:"message,omitempty"`
+	ScheduledAt  time.Time `json:"scheduled_at,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
 }
 
 // RequestInfoJSON represents information about a single request for registration in JSON protocol
@@ -53,6 +55,7 @@ type RegisterRequestJSON struct {
 type RegisterResponseJSON struct {
 	Type    string `json:"type"`
 	Status  string `json:"status"`
+	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 

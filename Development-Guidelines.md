@@ -1,4 +1,4 @@
-# AGENTS.md - Development Guide for patience CLI
+# Development Guidelines for patience CLI
 
 ## Build/Test Commands
 - `go build ./...` - Build all packages

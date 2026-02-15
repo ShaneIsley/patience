@@ -363,7 +363,8 @@ Monitor daemon performance via:
     ls -la /var/run/patience/daemon.sock
     
     # Fix permissions if needed
-    sudo chmod 666 /var/run/patience/daemon.sock   ```
+    sudo chmod 666 /var/run/patience/daemon.sock
+   ```
 
 2. **Port already in use**:
    ```bash
