@@ -47,14 +47,15 @@ go build -o patience ./cmd/patience
 
 ### 2. Try It Out
 ```bash
-# Basic retry with exponential backoff
-./patience exponential -- curl https://httpbin.org/status/500
+# Retry a randomly-failing endpoint with exponential backoff
+# (httpbin returns 200 or 500 at random; -f makes curl fail on HTTP errors)
+./patience exponential -- curl -f https://httpbin.org/status/200,500
 
-# HTTP-aware retry (respects server timing)
-./patience http-aware -- curl -i https://httpbin.org/delay/2
+# HTTP-aware retry (respects Retry-After headers from servers)
+./patience http-aware -- curl -f -i https://httpbin.org/status/200,503
 
 # Mathematical proactive rate limiting (prevents rate limit violations)
-./patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
+./patience diophantine --rate-limit 100 --window 1h -- curl -f https://httpbin.org/status/200,429
 
 # Success! Your command now has patience
 ```
@@ -84,7 +85,7 @@ patience fixed --attempts 5 --delay 1s -- npm test
 **Multi-Instance Rate Limiting:**
 ```bash
 # Coordinate across multiple instances to prevent rate limit violations
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl -f https://httpbin.org/status/200,429
 ```
 
 ### 4. Next Steps
@@ -126,14 +127,14 @@ The basic syntax is: `patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]`
 patience http-aware -- curl -i https://api.github.com/user
 
 # Exponential backoff with custom parameters
-patience exponential --base-delay 1s --multiplier 2.0 -- curl https://httpbin.org/delay/2
+patience exponential --base-delay 1s --multiplier 2.0 -- curl -f https://httpbin.org/status/200,503
 
 # Linear backoff for database connections
 patience linear --increment 2s --max-delay 30s -- psql -h db.example.com
 
 # Using abbreviations for brevity
 patience ha -f exp -- curl -i https://api.github.com
-patience exp -b 1s -x 2.0 -- curl https://httpbin.org/status/503
+patience exp -b 1s -x 2.0 -- curl -f https://httpbin.org/status/200,503
 ```
 
 ### Available Strategies
@@ -246,7 +247,7 @@ The HTTP-aware strategy is patience's flagship feature - it intelligently parses
 patience http-aware -- curl -i https://api.github.com/user
 
 # With fallback strategy when no HTTP info available
-patience http-aware --fallback exponential -- curl https://httpbin.org/delay/2
+patience http-aware --fallback exponential -- curl -f -i https://httpbin.org/status/200,503
 
 # Set maximum delay cap
 patience http-aware --max-delay 5m -- curl https://api.slow-service.com
@@ -350,10 +351,10 @@ Mathematical proactive rate limiting using Diophantine inequalities to prevent r
 
 ```bash
 # Basic proactive rate limiting
-patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
+patience diophantine --rate-limit 100 --window 1h -- curl -f https://httpbin.org/status/200,429
 
 # Multi-instance coordination via daemon
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
+patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl -f https://httpbin.org/status/200,429
 
 # Custom retry patterns within mathematical constraints
 patience diophantine --rate-limit 1000 --window 1h --retry-offsets "1s,5s,15s" -- api-call.sh
@@ -581,12 +582,12 @@ Switching from other retry tools? Here's how to migrate common patterns to patie
 
 **Old:**
 ```bash
-retry -t 5 -d 2 curl https://httpbin.org/status/503
+retry -t 5 -d 2 curl https://httpbin.org/status/200,503
 ```
 
 **New:**
 ```bash
-patience fixed --attempts 5 --delay 2s -- curl https://httpbin.org/status/503
+patience fixed --attempts 5 --delay 2s -- curl -f https://httpbin.org/status/200,503
 ```
 
 ### From `retries` (Python)
@@ -600,7 +601,7 @@ def api_call():
 
 **New:**
 ```bash
-patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl https://httpbin.org/status/503
+patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl -f https://httpbin.org/status/200,503
 ```
 
 ### From `exponential-backoff` (npm)
@@ -619,7 +620,7 @@ patience exponential --base-delay 1s --max-delay 30s -- curl api.com
 
 **Old:**
 ```bash
-while ! curl https://httpbin.org/status/503; do
+while ! curl -f https://httpbin.org/status/200,503; do
   echo "Retrying in 5 seconds..."
   sleep 5
 done
@@ -627,7 +628,7 @@ done
 
 **New:**
 ```bash
-patience fixed --delay 5s -- curl https://httpbin.org/status/503
+patience fixed --delay 5s -- curl -f https://httpbin.org/status/200,503
 ```
 
 ### From AWS CLI retry

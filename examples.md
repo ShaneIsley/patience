@@ -107,7 +107,7 @@ patience http-aware --fallback fibonacci -- \
 
 ```bash
 # Retry a failing curl request with exponential backoff
-patience exponential --attempts 5 --base-delay 1s -- curl -f https://httpbin.org/status/503
+patience exponential --attempts 5 --base-delay 1s -- curl -f https://httpbin.org/status/200,503
 
 # API call with custom multiplier and timeout protection
 patience exponential --base-delay 500ms --multiplier 1.5 --max-delay 10s --timeout 30s -- \
@@ -638,7 +638,7 @@ patience diophantine --rate-limit 100 --window 15m --retry-offsets 0,2m,5m,10m -
 
 ```bash
 # HTTP-aware retry (recommended for APIs)
-patience http-aware -- curl -f https://httpbin.org/status/503
+patience http-aware -- curl -f https://httpbin.org/status/200,503
 
 # Exponential backoff for network operations
 patience exponential --base-delay 1s --attempts 5 -- curl -f https://example.com
