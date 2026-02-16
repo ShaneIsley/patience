@@ -218,7 +218,7 @@ func TestConfig_Validate(t *testing.T) {
 				Attempts: 0,
 			},
 			expectError: true,
-			errorMsg:    "must be greater than 0",
+			errorMsg:    "must be between 1 and 1000",
 		},
 		{
 			name: "invalid attempts - too high",
@@ -226,7 +226,7 @@ func TestConfig_Validate(t *testing.T) {
 				Attempts: 1001,
 			},
 			expectError: true,
-			errorMsg:    "must be 1000 or less",
+			errorMsg:    "must be between 1 and 1000",
 		},
 		{
 			name: "invalid delay - negative",
@@ -521,7 +521,7 @@ func TestConfig_LoadWithPrecedence_ValidationError(t *testing.T) {
 	assert.Nil(t, config)
 	assert.Nil(t, debugInfo)
 	assert.Contains(t, err.Error(), "validation errors")
-	assert.Contains(t, err.Error(), "must be greater than 0")
+	assert.Contains(t, err.Error(), "must be between 1 and 1000")
 }
 
 func TestConfig_LoadWithEnvironment_InvalidValues(t *testing.T) {

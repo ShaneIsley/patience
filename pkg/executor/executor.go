@@ -95,14 +95,16 @@ func (r *SystemCommandRunner) RunWithOutputAndContext(ctx context.Context, comma
 	cmd.Stdout = io.MultiWriter(os.Stdout, stdoutBuf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderrBuf)
 
-	// Ensure process cleanup on context cancellation
-	go func() {
-		<-ctx.Done()
+	// Ensure process group cleanup on context cancellation.
+	// Using cmd.Cancel avoids the data race that occurs when accessing
+	// cmd.Process from a separate goroutine while cmd.Run() is executing.
+	cmd.Cancel = func() error {
 		if cmd.Process != nil {
 			// Kill process group to ensure all child processes are terminated
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		}
-	}()
+		return nil
+	}
 
 	err := cmd.Run()
 

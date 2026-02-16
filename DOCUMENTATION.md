@@ -80,7 +80,9 @@ The patience project maintains several documentation files:
 - **delay** - The time waited between attempts
 - **timeout** - Maximum time allowed for a single attempt
 
-**Avoid These Terms:**
+**Note:** The CLI output uses a `[retry]` prefix (e.g., `[retry] Attempt 1/5 starting...`). When quoting actual CLI output, preserve this prefix. The terminology guidance below applies to prose in documentation, not to CLI output examples.
+
+**Avoid These Terms in Prose:**
 - "retry tool" (use "patience CLI" or just "patience")
 - "backoff algorithm" (use "backoff strategy")
 - "wait time" (use "delay")
@@ -218,4 +220,4 @@ For questions about documentation maintenance:
 
 ---
 
-*This document is maintained as part of the patience CLI project. Last updated: 2025-07-28*
+*This document is maintained as part of the patience CLI project. Last updated: 2026-02-15*

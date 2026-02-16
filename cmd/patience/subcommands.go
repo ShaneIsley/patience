@@ -1120,7 +1120,7 @@ func createDiophantineCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "diophantine [OPTIONS] -- COMMAND [ARGS...]",
-		Aliases: []string{"dioph"},
+		Aliases: []string{"dioph", "dio"},
 		Short:   "Proactive rate limit compliance using Diophantine inequalities",
 		Long: `Diophantine strategy prevents rate limit violations before they occur by using
 mathematical modeling to ensure optimal throughput within rate limit constraints.

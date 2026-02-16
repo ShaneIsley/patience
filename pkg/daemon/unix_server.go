@@ -311,8 +311,14 @@ func (s *UnixServer) handleRegisterRequest(request map[string]interface{}) map[s
 // Type-safe protocol handlers
 
 // handleHandshakeTypeSafe handles handshake using type-safe protocol
-func (s *UnixServer) handleHandshakeTypeSafe(req HandshakeRequestJSON) HandshakeResponseJSON {
-	// For now, just return a successful response
+func (s *UnixServer) handleHandshakeTypeSafe(req HandshakeRequestJSON) ProtocolMessageJSON {
+	// Validate protocol version
+	if req.Version != "" && req.Version != "1.0" {
+		return ErrorResponseJSON{
+			Type:  "error",
+			Error: "unsupported protocol version: " + req.Version,
+		}
+	}
 	return HandshakeResponseJSON{
 		Type:    "handshake_response",
 		Status:  "ok",
@@ -326,6 +332,8 @@ func (s *UnixServer) handleScheduleRequestTypeSafe(req ScheduleRequestJSON) Sche
 	return ScheduleResponseJSON{
 		Type:        "schedule_response",
 		Status:      "ok",
+		CanSchedule: true,
+		Reason:      "request scheduled",
 		Message:     "request scheduled",
 		ScheduledAt: time.Now(),
 		ExpiresAt:   time.Now().Add(time.Hour),
@@ -338,6 +346,7 @@ func (s *UnixServer) handleRegisterRequestTypeSafe(req RegisterRequestJSON) Regi
 	return RegisterResponseJSON{
 		Type:    "register_response",
 		Status:  "ok",
+		Success: true,
 		Message: "requests registered successfully",
 	}
 }

@@ -184,9 +184,10 @@ func TestTypeSafeServerHandlers(t *testing.T) {
 		}
 
 		response := server.handleHandshakeTypeSafe(request)
-
-		assert.Equal(t, "handshake_response", response.Type)
-		assert.Equal(t, "ok", response.Status)
+		handshakeResp, ok := response.(HandshakeResponseJSON)
+		assert.True(t, ok, "expected HandshakeResponseJSON")
+		assert.Equal(t, "handshake_response", handshakeResp.Type)
+		assert.Equal(t, "ok", handshakeResp.Status)
 	})
 
 	t.Run("handleScheduleRequestTypeSafe method exists and works", func(t *testing.T) {

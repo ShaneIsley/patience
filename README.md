@@ -143,7 +143,7 @@ patience exp -b 1s -x 2.0 -- curl https://httpbin.org/status/503
 | `http-aware` | `ha` | Respects HTTP `Retry-After` headers | API calls, HTTP requests |
 | `exponential` | `exp` | Exponentially increasing delays | Network operations, external services |
 | `linear` | `lin` | Linearly increasing delays | Rate-limited APIs, predictable timing |
-| `fixed` | `fix` | Fixed delay between patience | Simple patience, testing |
+| `fixed` | `fix` | Fixed delay between attempts | Simple retries, testing |
 | `jitter` | `jit` | Random jitter around exponential | Distributed systems, load balancing |
 | `decorrelated-jitter` | `dj` | AWS-style decorrelated jitter | High-scale distributed systems |
 | `fibonacci` | `fib` | Fibonacci sequence delays | Moderate growth, gradual recovery |
@@ -180,13 +180,13 @@ Use `--success-pattern` to define when a command should be considered successful
 
 ```bash
 # Deployment tools that don't use exit codes properly
-patience --success-pattern "deployment successful" -- kubectl apply -f deployment.yaml
+patience fixed --success-pattern "deployment successful" -- kubectl apply -f deployment.yaml
 
 # API responses that indicate success
-patience --success-pattern "\"status\":\"ok\"" -- curl -s https://httpbin.org/json
+patience exponential --success-pattern "\"status\":\"ok\"" -- curl -s https://httpbin.org/json
 
 # Multiple success indicators (regex OR)
-patience --success-pattern "(success|completed|ready)" -- health-check.sh
+patience fixed --success-pattern "(success|completed|ready)" -- health-check.sh
 ```
 
 ### Failure Patterns
@@ -195,13 +195,13 @@ Use `--failure-pattern` to define when a command should be considered failed, ev
 
 ```bash
 # Catch error messages in output
-patience --failure-pattern "(?i)error|failed|timeout" -- flaky-script.sh
+patience exponential --failure-pattern "(?i)error|failed|timeout" -- flaky-script.sh
 
 # Specific failure conditions
-patience --failure-pattern "connection refused|network unreachable" -- network-test.sh
+patience fixed --failure-pattern "connection refused|network unreachable" -- network-test.sh
 
 # JSON error responses
-patience --failure-pattern "\"error\":" -- api-call.sh
+patience exponential --failure-pattern "\"error\":" -- api-call.sh
 ```
 
 ### Pattern Precedence
@@ -217,7 +217,7 @@ Add `--case-insensitive` to make pattern matching case-insensitive:
 
 ```bash
 # Matches "SUCCESS", "success", "Success", etc.
-patience --success-pattern "success" --case-insensitive -- deployment.sh
+patience fixed --success-pattern "success" --case-insensitive -- deployment.sh
 ```
 
 ### Regex Support
@@ -226,13 +226,13 @@ Both success and failure patterns support full regex syntax:
 
 ```bash
 # Match specific formats
-patience --success-pattern "build #\d+ completed" -- build-script.sh
+patience exponential --success-pattern "build #\d+ completed" -- build-script.sh
 
 # Word boundaries
-patience --failure-pattern "\berror\b" -- log-parser.sh
+patience fixed --failure-pattern "\berror\b" -- log-parser.sh
 
 # Capture groups and alternatives
-patience --success-pattern "(deployed|updated) successfully" -- deploy.sh
+patience exponential --success-pattern "(deployed|updated) successfully" -- deploy.sh
 ```
 
 ## Strategy Details

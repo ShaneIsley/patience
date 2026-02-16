@@ -18,7 +18,7 @@ The patience CLI has successfully completed a comprehensive 6-phase performance 
 - **Startup Time:** 4ms average (Target: <100ms) - **25x better than target**
 - **Memory Usage:** <15MB (Target: <50MB) - **3x better than target**
 - **Command Overhead:** ~5x (Target: <10x) - **2x better than target**
-- **All 6 backoff strategies** perform within 5% of each other
+- **All 6 original backoff strategies** perform within 5% of each other (4 additional strategies added after this evaluation)
 - **Configuration loading:** <8ms for all complexity levels
 
 ### ✅ **Phase 2: Stress Testing & Scalability - SUCCESSFUL**
@@ -160,7 +160,7 @@ The patience CLI has successfully completed a comprehensive 6-phase performance 
 
 ### **Competitive Positioning:**
 - **Superior performance** vs existing retry tools
-- **Comprehensive feature set** with 6 backoff strategies
+- **Comprehensive feature set** with 10 backoff strategies
 - **Production-ready reliability** with excellent error handling
 - **Modern toolchain integration** (CI/CD, containers, shell scripts)
 - **Optimized resource utilization** suitable for all environments

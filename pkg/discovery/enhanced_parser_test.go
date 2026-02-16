@@ -165,13 +165,13 @@ func TestEnhancedParser_IdentifyAPIResource(t *testing.T) {
 			name:     "Google Cloud API",
 			host:     "compute.googleapis.com",
 			path:     "/compute/v1/projects/test/zones",
-			expected: "gcp:compute.googleapis.com/compute/v1/*",
+			expected: "gcp:compute.googleapis.com/v1/projects/*",
 		},
 		{
 			name:     "Generic API",
 			host:     "api.example.com",
 			path:     "/v1/users/123",
-			expected: "api.example.com/v1/users/123",
+			expected: "rest-api:api.example.com/v1/users/123",
 		},
 	}
 

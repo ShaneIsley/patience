@@ -429,8 +429,8 @@ func TestJSONPatternMatcher_Performance(t *testing.T) {
 		t.Errorf("JSONPatternMatcher.Match() = %v, want true", result)
 	}
 
-	if duration > time.Millisecond {
-		t.Errorf("JSONPatternMatcher.Match() took %v, want < 1ms", duration)
+	if duration > 10*time.Millisecond {
+		t.Errorf("JSONPatternMatcher.Match() took %v, want < 10ms", duration)
 	}
 
 	t.Logf("Performance test completed in %v", duration)

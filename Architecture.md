@@ -96,6 +96,7 @@ We chose subcommands over a flag-based approach for several key reasons:
 - `fibonacci` (`fib`) - Fibonacci sequence delays
 - `polynomial` (`poly`) - Polynomial growth with configurable exponent
 - `adaptive` (`adapt`) - Machine learning adaptive strategy
+- `diophantine` (`dio`) - Mathematical proactive rate limiting
 
 ### **3.2. Execution Flow**
 
@@ -230,11 +231,11 @@ When patienced is not running, the CLI is the sole source of information. It pro
 
 #### **Real-time (Per-Attempt) Output:**
 
-* **Attempt Start:** A clear message indicating which attempt is starting.  
-  * Example: \[retry\] Attempt 1/5 starting...  
-* **Command Output:** The stdout and stderr from the wrapped command are streamed directly to the terminal by default.  
-* **Attempt Failure:** When an attempt fails, retry immediately reports **why** it failed and the **delay** before the next attempt.  
-  * Example (exit code): \[retry\] Attempt 1/5 failed (exit code: 1). Retrying in 2.1s.  
+* **Attempt Start:** A clear message indicating which attempt is starting.
+  * Example: \[retry\] Attempt 1/5 starting...
+* **Command Output:** The stdout and stderr from the wrapped command are streamed directly to the terminal by default.
+* **Attempt Failure:** When an attempt fails, patience immediately reports **why** it failed and the **delay** before the next attempt.
+  * Example (exit code): \[retry\] Attempt 1/5 failed (exit code: 1). Retrying in 2.1s.
   * Example (timeout): \[retry\] Attempt 2/5 failed (timeout: 10s). Retrying in 4.5s.
 
 #### **Final Summary Output:**
