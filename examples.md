@@ -63,7 +63,7 @@ patience diophantine --daemon --resource-id "dockerhub-api" \
 
 ## HTTP-Aware Strategy Examples
 
-The HTTP-aware strategy is patience's flagship feature - it intelligently parses server responses for optimal retry timing.
+The HTTP-aware strategy parses server responses for optimal retry timing.
 
 ### Basic HTTP-Aware Usage
 
@@ -497,7 +497,7 @@ patience exponential --attempts 5 --base-delay 1s --multiplier 1.5 -- api-call
 patience exponential --attempts 6 --base-delay 1s --max-delay 5s -- api-call
 ```
 
-**Why exponential backoff?**
+**Exponential backoff benefits:**
 - Reduces load on failing services
 - Industry standard for retry logic
 - Gives services time to recover
@@ -514,7 +514,7 @@ patience jitter --attempts 5 --base-delay 1s -- distributed-api-call
 patience jitter --attempts 5 --base-delay 1s --max-delay 10s -- high-scale-service
 ```
 
-**Why jitter?**
+**Jitter benefits:**
 - Prevents multiple clients from retrying at the same time
 - Essential for distributed systems and microservices
 - Reduces server load spikes during outages
@@ -531,7 +531,7 @@ patience linear --attempts 5 --increment 1s -- gradual-retry
 patience linear --attempts 6 --increment 1s --max-delay 5s -- capped-linear
 ```
 
-**Why linear backoff?**
+**Linear backoff benefits:**
 - Predictable timing for debugging
 - Good for operations that need steady progression
 - Less aggressive than exponential growth
@@ -548,11 +548,11 @@ patience decorrelated-jitter --attempts 5 --base-delay 1s --multiplier 3.0 -- aw
 patience decorrelated-jitter --attempts 8 --base-delay 500ms --multiplier 3.0 --max-delay 30s -- production-service
 ```
 
-**Why decorrelated jitter?**
+**Decorrelated jitter benefits:**
 - AWS-recommended strategy for their services
 - Better distribution than simple jitter
 - Uses previous delay to calculate next delay
-- Optimal for high-scale distributed systems
+- Suited for high-scale distributed systems
 
 ### Fibonacci Backoff
 Use when you want moderate growth between linear and exponential:
@@ -565,11 +565,11 @@ patience fibonacci --attempts 6 --base-delay 1s -- moderate-growth
 patience fibonacci --attempts 8 --base-delay 500ms --max-delay 15s -- recovery-service
 ```
 
-**Why fibonacci backoff?**
+**Fibonacci backoff benefits:**
 - Moderate growth rate (between linear and exponential)
 - Natural progression that's not too aggressive
 - Good for services that need gradual recovery time
-- Mathematical elegance with practical benefits
+- Practical for moderate-growth scenarios
 
 ### Polynomial Backoff
 Use when you want customizable growth patterns:
@@ -585,11 +585,11 @@ patience polynomial --attempts 5 --base-delay 1s --exponent 1.5 -- api-call
 patience polynomial --attempts 5 --base-delay 1s --exponent 0.8 -- frequent-operation
 ```
 
-**Why polynomial backoff?**
+**Polynomial backoff benefits:**
 - Highly customizable growth patterns
 - Fine-tuned control over delay progression
 - Can be sublinear, linear, or superlinear
-- Mathematical precision for specific use cases
+- Precise for specific use cases
 
 ### Adaptive Strategy
 Use when you want machine learning-inspired optimization:
@@ -605,11 +605,10 @@ patience adaptive --attempts 8 --learning-rate 0.5 --fallback fixed -- dynamic-a
 patience adaptive --attempts 15 --learning-rate 0.05 --memory-window 200 -- database-operation
 ```
 
-**Why adaptive strategy?**
+**Adaptive strategy benefits:**
 - Learns from success/failure patterns
 - Optimizes timing based on actual performance
 - Adapts to changing service conditions
-- Machine learning-inspired approach
 
 ### Diophantine Strategy
 Use when you want proactive rate limit compliance and optimal throughput:
@@ -625,12 +624,12 @@ patience diophantine --rate-limit 5 --window 1m --retry-offsets 0,10s,30s -- fre
 patience diophantine --rate-limit 100 --window 15m --retry-offsets 0,2m,5m,10m -- batch-operation
 ```
 
-**Why diophantine strategy?**
+**Diophantine strategy benefits:**
 - Prevents rate limit violations before they occur
 - Maximizes throughput within rate limit constraints
-- Uses mathematical modeling (Diophantine inequalities) for precision
-- Ideal for controlled environments where you schedule tasks
-- Proactive rather than reactive approach to rate limiting
+- Uses Diophantine inequalities for mathematical precision
+- Suited to controlled environments where you schedule tasks
+- Proactive rather than reactive rate limiting
 
 ## Quick Reference
 
@@ -763,4 +762,4 @@ patience exponential --base-delay 3s -- docker-compose exec web curl -f http://l
 
 ---
 
-*Choose the right strategy for your use case. When in doubt, start with `http-aware` for APIs or `exponential` for everything else.*
+*Start with `http-aware` for API calls or `exponential` for everything else.*

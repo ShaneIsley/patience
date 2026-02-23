@@ -1,6 +1,6 @@
 # **Architecture: patience CLI**
 
-This document outlines the architecture for the modern, strategy-based patience command-line utility, written in Go.
+This document outlines the architecture for the patience command-line utility, written in Go.
 
 ## **1\. Core Philosophy**
 
@@ -11,7 +11,7 @@ The patience CLI is designed to be:
 * **Reliable:** A trustworthy tool for wrapping and retrying critical commands in production environments
 * **Observant:** Provides clear, actionable feedback and metrics with real-time status reporting
 * **Flexible:** Supports a wide range of use cases, from simple scripts to complex distributed systems
-* **Modern:** Leverages modern CLI patterns (subcommands) and system capabilities
+* **Modern:** Uses subcommand patterns and system capabilities
 * **Self-contained:** Core functionality works flawlessly without external dependencies. The daemon is optional.
 
 ## **2\. High-Level Components**
@@ -72,13 +72,13 @@ The system consists of three main components:
 
 ## **3\. patience CLI \- Detailed Architecture**
 
-The CLI uses a modern subcommand-based architecture where each backoff strategy is a dedicated subcommand with specialized configuration.
+The CLI uses a subcommand-based architecture where each backoff strategy is a dedicated subcommand with its own configuration.
 
 ### **3.1. Subcommand Architecture Design**
 
 **Design Decision: Subcommands vs. Flags**
 
-We chose subcommands over a flag-based approach for several key reasons:
+Subcommands were chosen over a flag-based approach for these reasons:
 
 1. **Strategy-Specific Configuration:** Each strategy has unique parameters (e.g., HTTP-aware has `--fallback`, exponential has `--multiplier`)
 2. **Discoverability:** Users can explore strategies with `patience --help` and get strategy-specific help with `patience STRATEGY --help`
@@ -252,7 +252,7 @@ When patienced is not running, the CLI is the sole source of information. It pro
 
 ### **3.3. HTTP-Aware Intelligence**
 
-The HTTP-aware strategy represents a significant architectural innovation:
+The HTTP-aware strategy provides the following capabilities:
 
 **HTTP Response Parsing:**
 - Extracts `Retry-After` headers from HTTP responses
@@ -263,10 +263,10 @@ The HTTP-aware strategy represents a significant architectural innovation:
 **Real-World Validation:**
 - Tested against 7 major APIs: GitHub, Twitter, AWS, Stripe, Discord, Reddit, Slack
 - Handles various HTTP response formats and timing conventions
-- Respects server load and rate limiting automatically
+- Respects server load and rate limiting
 
 **Fallback Strategy Integration:**
-- Seamlessly integrates with any mathematical strategy as fallback
+- Integrates with any mathematical strategy as fallback
 - Allows users to specify fallback behavior: `--fallback exponential`
 - Maintains consistent behavior when HTTP information is unavailable
 
@@ -297,7 +297,7 @@ The HTTP-aware strategy represents a significant architectural innovation:
 
 ## **4\. patienced Daemon \- Detailed Architecture**
 
-The daemon is a long-running, optional background service for metrics aggregation.
+The daemon is an optional background service for metrics aggregation.
 
 ### **4.1. Core Responsibilities**
 
@@ -329,7 +329,7 @@ When the daemon is active, the following metrics are collected and aggregated:
 ### **5.1. Subcommand Architecture Benefits**
 
 **User Experience:**
-- **Intuitive Discovery:** `patience --help` shows all available strategies
+- **Discovery:** `patience --help` shows all available strategies
 - **Strategy-Specific Help:** `patience exponential --help` shows relevant options only
 - **Shorter Commands:** `patience exp -b 1s` vs `patience --backoff exponential --delay 1s` (58% shorter)
 - **No Flag Conflicts:** Each strategy can have unique flags without namespace pollution
@@ -349,7 +349,7 @@ When the daemon is active, the following metrics are collected and aggregated:
 ### **5.2. HTTP-Aware Strategy Benefits**
 
 **Adaptive Intelligence:**
-- **Server-Directed Timing:** Respects server load and rate limiting automatically
+- **Server-Directed Timing:** Respects server load and rate limiting
 - **Optimal Performance:** Reduces unnecessary load on struggling servers
 - **Real-World Tested:** Validated against major APIs in production use
 - **Graceful Degradation:** Falls back to mathematical strategies when needed
@@ -362,9 +362,9 @@ When the daemon is active, the following metrics are collected and aggregated:
 
 ## **6\. Technology Choices**
 
-* **Language:** Go. Ideal for creating efficient, self-contained, cross-platform CLI tools. Excellent concurrency model for handling subprocesses, timeouts, and HTTP parsing.
-* **CLI Framework:** Cobra. Industry-standard library for building modern CLI applications with subcommand support.
-* **HTTP Parsing:** Go standard library (`net/http`, `encoding/json`). No external dependencies for HTTP intelligence.
+* **Language:** Go — efficient, self-contained, cross-platform CLI tooling with a strong concurrency model for handling subprocesses, timeouts, and HTTP parsing.
+* **CLI Framework:** Cobra — the standard library for Go CLI applications with subcommand support.
+* **HTTP Parsing:** Go standard library (`net/http`, `encoding/json`) — no external dependencies for HTTP intelligence.
 * **Configuration:** Custom TOML-based configuration with precedence handling (file → environment → flags).
-* **Testing:** Go standard testing with testify for assertions. Comprehensive test coverage including real HTTP integration tests.
-* **Metrics Exposition:** prometheus/client\_golang. Standard Go library for instrumenting applications with Prometheus metrics.
+* **Testing:** Go standard testing with testify for assertions, including real HTTP integration tests.
+* **Metrics Exposition:** prometheus/client\_golang — the standard Go library for Prometheus metrics.

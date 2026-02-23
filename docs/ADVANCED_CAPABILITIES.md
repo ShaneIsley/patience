@@ -2,14 +2,13 @@
 
 ## Overview
 
-The patience tool has evolved from a simple command retry utility into an **intelligent pattern recognition and log analysis system**. The new multi-line pattern capabilities transform how developers and operations teams handle complex, real-world command outputs.
+patience now includes multi-line pattern recognition for log analysis. These capabilities help developers and operations teams handle complex command outputs.
 
 ## Core Capabilities
 
 ### 1. **Intelligent Stack Trace Analysis**
 
-**Before**: Manual log scanning and error interpretation
-**After**: Automated root cause identification with structured extraction
+The strategy automates root cause identification with structured extraction, replacing manual log scanning.
 
 ```yaml
 # Example: Java Application Debugging
@@ -350,4 +349,4 @@ patience --pattern go_panic --ide-format go test ./...
 
 ---
 
-This advanced pattern system transforms patience from a simple retry tool into a **comprehensive log intelligence platform**, enabling developers and operations teams to quickly understand, diagnose, and resolve complex issues across their entire technology stack.
+These pattern capabilities help developers and operations teams understand, diagnose, and resolve issues across their technology stack.

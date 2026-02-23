@@ -129,7 +129,7 @@ The "Quick Start" section (line 37) and the "Basic Usage" section (line 119) sub
 
 ### 14. No CHANGELOG
 
-For a project claiming publication readiness, there is no CHANGELOG.md tracking version history, breaking changes, or release notes.
+The project has no CHANGELOG.md tracking version history, breaking changes, or release notes.
 
 ### 15. examples.md length
 
@@ -141,7 +141,7 @@ At 765+ lines, examples.md is thorough but repetitive. Many examples differ only
 
 ### Consolidate developer documentation
 
-Currently there are three partially overlapping developer-facing documents:
+Three partially overlapping developer-facing documents exist:
 - `AGENTS.md` (23 lines, AI-focused)
 - `Development-Guidelines.md` (154 lines, detailed but wrongly titled)
 - `CONTRIBUTING.md` (240 lines, quality gates and PR process)

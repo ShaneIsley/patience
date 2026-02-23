@@ -1,6 +1,6 @@
 # patience
 
-A modern, intelligent command-line tool for practicing patience with adaptive backoff strategies. Built with Go and designed to be your patient companion when dealing with flaky commands, network requests, or any process that might need a second (or third, or fourth) chance.
+A command-line tool for retrying commands with adaptive backoff strategies, written in Go. Use it when commands fail due to transient errors — network blips, rate limits, flaky services, or any process that benefits from a second attempt.
 
 **Author:** Shane Isley  
 **Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)  
@@ -8,7 +8,7 @@ A modern, intelligent command-line tool for practicing patience with adaptive ba
 
 ## Why patience?
 
-We've all been there – a deployment script fails because of a temporary network hiccup, a test flakes out randomly, or an API call times out just when you need it most. Instead of manually running the same command over and over, let `patience` handle the tedious work for you with grace and wisdom.
+Deployment scripts fail on temporary network hiccups. Tests flake out randomly. API calls time out at inconvenient moments. Instead of running the same command over and over manually, let `patience` handle the retries.
 
 ## Features
 
@@ -36,7 +36,7 @@ We've all been there – a deployment script fails because of a temporary networ
 
 ## Quick Start
 
-Get up and running with patience in under 2 minutes:
+Get up and running with patience:
 
 ### 1. Install
 ```bash
@@ -172,7 +172,7 @@ patience http-aware --success-pattern "SUCCESS" --case-insensitive -- deployment
 
 ## Pattern Matching
 
-Many real-world commands don't use exit codes properly. A deployment script might print "deployment successful" but exit with code 1, or a health check might exit with code 0 but print "Error: service unavailable". Pattern matching solves this by letting you define success and failure based on the command's output.
+Many commands don't use exit codes correctly. A deployment script might print "deployment successful" but exit with code 1, or a health check might exit with code 0 but print "Error: service unavailable". Pattern matching lets you define success and failure based on the command's output instead.
 
 ### Success Patterns
 
@@ -239,7 +239,7 @@ patience exponential --success-pattern "(deployed|updated) successfully" -- depl
 
 ### HTTP-Aware Strategy (`http-aware`, `ha`)
 
-The HTTP-aware strategy is patience's flagship feature - it intelligently parses HTTP responses to determine optimal patience timing.
+The HTTP-aware strategy parses HTTP responses to determine optimal retry timing.
 
 ```bash
 # Basic HTTP-aware patience
@@ -445,7 +445,7 @@ Use `--debug-config` to see how configuration values are resolved:
 patience exponential --debug-config -- command
 ```
 
-This shows the source of each configuration value (CLI flag, environment variable, config file, or default).
+This shows where each configuration value came from (CLI flag, environment variable, config file, or default).
 
 ## Command-Line Options
 
@@ -553,7 +553,7 @@ This shows the source of each configuration value (CLI flag, environment variabl
 
 ## Behavior
 
-**Important:** `patience` stops immediately when a command succeeds - it does not execute remaining attempts.
+`patience` stops immediately when a command succeeds and skips remaining attempts.
 
 - ✅ **Exits on first success** - If attempt 1 succeeds, attempts 2-N are never executed
 - 🔄 **Only has patience on failure** - Success means the job is complete
@@ -575,7 +575,7 @@ patience http-aware --attempts 5 -- curl https://httpbin.org/status/200
 
 ## Migration Guide
 
-Switching from other retry tools? Here's how to migrate common patterns to patience:
+Switching from other retry tools? Common migration patterns:
 
 ### From `retry` (bash script)
 
@@ -672,7 +672,7 @@ Check out [examples.md](examples.md) for real-world usage scenarios and common p
 
 ## Development
 
-This project follows Test-Driven Development (TDD) principles and is built incrementally. The codebase includes:
+This project follows Test-Driven Development (TDD) principles and is built incrementally. The codebase has:
 
 - **Comprehensive test coverage** – Unit tests for all core functionality
 - **Integration tests** – End-to-end CLI testing
@@ -710,7 +710,7 @@ GOOS=windows GOARCH=amd64 go build -o patience.exe ./cmd/patience
 
 ## Architecture
 
-The project is organized into clean, testable packages:
+The project uses these packages:
 
 - `cmd/patience` – CLI interface with subcommand architecture using Cobra
 - `pkg/executor` – Core patience logic and command execution
@@ -724,7 +724,7 @@ See [Architecture.md](Architecture.md) for a detailed breakdown of the component
 
 ## Contributing
 
-We welcome contributions! The project follows conventional commit messages and maintains high test coverage. Feel free to:
+The project follows conventional commit messages and maintains high test coverage. Contributions are welcome:
 
 - Report bugs or suggest features via [GitHub Issues](https://github.com/shaneisley/patience/issues)
 - Submit pull requests with tests
