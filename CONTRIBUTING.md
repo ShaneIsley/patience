@@ -1,14 +1,14 @@
 # Contributing to Patience
 
-Thank you for your interest in contributing to the Patience project! This document outlines our code quality standards and development practices.
+This document outlines code quality standards and development practices for the Patience project.
 
 ## Code Quality Standards
 
-This project maintains high code quality through automated quality gates that prevent regression of critical improvements made during our TDD development cycles.
+This project uses automated quality gates to prevent regression of improvements made during TDD development cycles.
 
 ### Quality Gates Overview
 
-Our CI/CD pipeline enforces the following quality standards:
+The CI/CD pipeline enforces these quality standards:
 
 #### 1. Function Complexity (TDD Cycle 1 Fix)
 - **Maximum function length**: 120 lines
@@ -61,7 +61,7 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 ### 2. Before Committing
 
-Run these commands to ensure your changes meet quality standards:
+Run these commands before committing:
 
 ```bash
 # Format code
@@ -79,7 +79,7 @@ go test -bench=. -benchtime=1s -run=^$ ./...
 
 ### 3. Pre-commit Hooks
 
-Our pre-commit hooks automatically check for:
+Pre-commit hooks check for:
 - Code formatting and imports
 - Function complexity limits
 - Magic number detection
@@ -89,7 +89,7 @@ Our pre-commit hooks automatically check for:
 
 ### 4. CI/CD Pipeline
 
-All pull requests must pass our comprehensive CI/CD pipeline:
+All pull requests must pass the CI/CD pipeline:
 
 - **Linting**: golangci-lint with comprehensive rules
 - **Testing**: Unit tests with race detection on Go 1.21 and 1.22
@@ -207,7 +207,7 @@ Brief description of changes and motivation.
 
 ## Quality Metrics
 
-Our current quality metrics (maintained by automation):
+Current quality metrics (maintained by automation):
 
 - **Function Complexity**: ✅ All functions under 120 lines
 - **Magic Numbers**: ✅ All constants properly extracted
@@ -226,7 +226,7 @@ Our current quality metrics (maintained by automation):
 
 ## Regression Prevention
 
-Our automated systems prevent regression of these critical fixes:
+Automated checks prevent regression of these fixes:
 
 1. **TDD Cycle 1**: Function complexity and magic number elimination
 2. **TDD Cycle 2**: Error handling improvements
@@ -237,4 +237,4 @@ Any changes that would reintroduce these issues will be automatically rejected b
 
 ---
 
-By following these guidelines, you help maintain the high code quality standards that make Patience a reliable and maintainable project. Thank you for your contributions!
+These guidelines keep the codebase reliable and maintainable.

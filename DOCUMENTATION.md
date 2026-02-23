@@ -1,6 +1,6 @@
 # Documentation Maintenance Guide
 
-This document outlines the processes and standards for maintaining the patience CLI documentation suite.
+This document describes the processes and standards for maintaining the patience CLI documentation.
 
 ## Documentation Structure
 
@@ -46,11 +46,11 @@ The patience project maintains several documentation files:
 ### 3. Quality Standards
 
 **Writing Standards:**
-- Use clear, concise language
+- Write clearly and concisely
 - Include practical examples for all features
-- Maintain consistent terminology (see [Terminology](#terminology))
+- Use consistent terminology (see [Terminology](#terminology))
 - Follow markdown best practices
-- Include cross-references between related sections
+- Cross-reference related sections
 
 **Technical Standards:**
 - All code examples must be tested and working
@@ -220,4 +220,4 @@ For questions about documentation maintenance:
 
 ---
 
-*This document is maintained as part of the patience CLI project. Last updated: 2026-02-15*
+*Last updated: 2026-02-15*

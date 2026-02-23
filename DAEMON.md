@@ -1,6 +1,6 @@
 # Patience Daemon (patienced)
 
-The patience daemon (`patienced`) is a background service that collects and aggregates metrics from patience CLI instances, providing a centralized monitoring solution for patience operations across your infrastructure.
+The patience daemon (`patienced`) is an optional background service. It collects and aggregates metrics from patience CLI instances and provides a centralized monitoring solution for patience operations.
 
 **Author:** Shane Isley  
 **Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)
@@ -265,7 +265,7 @@ The dashboard provides:
 
 ## Integration with patience CLI
 
-The patience CLI automatically sends metrics to the daemon when available. The daemon also provides coordination services for the Diophantine strategy, enabling multi-instance rate limiting.
+The patience CLI sends metrics to the daemon when the daemon is running. The daemon also coordinates the Diophantine strategy across multiple instances.
 
 ### Diophantine Strategy Coordination
 
@@ -436,7 +436,7 @@ patienced -enable-profiling
 1. **Monitor resource usage**: Check memory and CPU usage
 2. **Review logs**: Look for errors or warnings
 3. **Update configuration**: Adjust limits based on usage patterns
-4. **Restart periodically**: Consider periodic restarts for long-running instances
+4. **Restart periodically**: Restart long-running instances periodically
 
 ### Backup and Recovery
 
