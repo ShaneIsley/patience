@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patience: Interactive Backoff Strategy Visualizer</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2e3347;
+    --text: #e2e4ed;
+    --text-dim: #8b8fa7;
+    --accent: #6c8cff;
+    --accent2: #a78bfa;
+    --success: #34d399;
+    --fail: #f87171;
+    --warn: #fbbf24;
+    --radius: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  header {
+    text-align: center;
+    padding: 40px 20px 20px;
+    background: linear-gradient(180deg, #181b25 0%, var(--bg) 100%);
+  }
+
+  header h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin-top: 6px;
+  }
+
+  .app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+  }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .card h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  /* Strategy selector */
+  .strategy-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .strategy-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-family: inherit;
+  }
+
+  .strategy-btn:hover {
+    background: var(--surface2);
+  }
+
+  .strategy-btn.active {
+    background: rgba(108, 140, 255, 0.12);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .strategy-btn .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .strategy-btn .badge {
+    margin-left: auto;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-dim);
+  }
+
+  /* Sliders */
+  .slider-group {
+    margin-bottom: 14px;
+  }
+
+  .slider-group:last-child { margin-bottom: 0; }
+
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+  }
+
+  .slider-label span:first-child { color: var(--text-dim); }
+  .slider-label span:last-child {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-size: 0.9rem;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--surface2);
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 6px rgba(108, 140, 255, 0.4);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  /* Description */
+  .desc-text {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+
+  .desc-text code {
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  /* --- Main panel --- */
+  .main-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Controls bar */
+  .controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: #5a7aee; }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { background: #2c3040; }
+
+  .controls-bar .spacer { flex: 1; }
+
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .speed-control select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.85rem;
+  }
+
+  /* Chart area */
+  .chart-container {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    min-height: 380px;
+  }
+
+  .chart-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  canvas { display: block; }
+
+  /* Timeline */
+  .timeline-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    min-height: 200px;
+  }
+
+  .timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .timeline-header h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text);
+  }
+
+  .timeline-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+
+  .timeline-stats .val {
+    color: var(--accent);
+    font-weight: 600;
+    margin-left: 4px;
+  }
+
+  .timeline-track {
+    position: relative;
+    height: 80px;
+    background: var(--surface2);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .timeline-axis {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 24px;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 4px 4px;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+  }
+
+  .timeline-axis span {
+    position: absolute;
+    bottom: 4px;
+    transform: translateX(-50%);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .attempt-marker {
+    position: absolute;
+    top: 8px;
+    width: 2px;
+    bottom: 26px;
+    border-radius: 1px;
+    transition: left 0.3s ease;
+  }
+
+  .attempt-marker .marker-dot {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+  }
+
+  .attempt-marker .marker-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  .delay-bar {
+    position: absolute;
+    top: 38px;
+    height: 12px;
+    border-radius: 6px;
+    opacity: 0.5;
+    transition: left 0.3s ease, width 0.3s ease;
+  }
+
+  .delay-bar .delay-label {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    white-space: nowrap;
+    color: var(--text-dim);
+  }
+
+  /* Comparison table */
+  .comparison-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+
+  .comparison-container h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text);
+  }
+
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .comparison-table th {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.78rem;
+  }
+
+  .comparison-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(46, 51, 71, 0.4);
+  }
+
+  .comparison-table tr:last-child td { border-bottom: none; }
+
+  .comparison-table .strat-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  /* Formula display */
+  .formula-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Patience Strategy Visualizer</h1>
+  <p>Interactive exploration of backoff strategies &mdash; see how parameters shape retry timing</p>
+</header>
+
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="card">
+      <h3>Strategy</h3>
+      <div class="strategy-list" id="strategyList"></div>
+    </div>
+
+    <div class="card" id="paramsCard">
+      <h3>Parameters</h3>
+      <div id="sliders"></div>
+      <div class="formula-box" id="formulaBox"></div>
+    </div>
+
+    <div class="card">
+      <h3>About This Strategy</h3>
+      <div class="desc-text" id="descText"></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main-panel">
+    <div class="controls-bar">
+      <button class="btn btn-primary" id="btnAnimate">Animate</button>
+      <button class="btn btn-secondary" id="btnReset">Reset</button>
+      <div class="spacer"></div>
+      <div class="speed-control">
+        <span>Speed</span>
+        <select id="speedSelect">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Delay per Attempt</div>
+      <canvas id="chartCanvas"></canvas>
+    </div>
+
+    <div class="timeline-container">
+      <div class="timeline-header">
+        <h3>Retry Timeline</h3>
+        <div class="timeline-stats">
+          <span>Total time:<span class="val" id="statTotal">0s</span></span>
+          <span>Attempts:<span class="val" id="statAttempts">0</span></span>
+          <span>Avg delay:<span class="val" id="statAvg">0s</span></span>
+        </div>
+      </div>
+      <div class="timeline-track" id="timelineTrack">
+        <div class="timeline-axis" id="timelineAxis"></div>
+      </div>
+    </div>
+
+    <div class="comparison-container">
+      <h3>All Strategies Comparison (current parameters)</h3>
+      <table class="comparison-table" id="compTable">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Attempt 1</th>
+            <th>Attempt 3</th>
+            <th>Attempt 5</th>
+            <th>Attempt 8</th>
+            <th>Attempt 10</th>
+            <th>Total (10)</th>
+          </tr>
+        </thead>
+        <tbody id="compBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========== STRATEGY DEFINITIONS ===========
+const STRATEGIES = {
+  fixed: {
+    name: 'Fixed',
+    color: '#6c8cff',
+    badge: 'simple',
+    formula: 'delay = duration',
+    desc: 'Returns the same delay every time, regardless of attempt number. The simplest strategy &mdash; predictable and easy to reason about. Best for services with known recovery times.',
+    params: [
+      { id: 'duration', label: 'Duration', min: 0.1, max: 30, step: 0.1, default: 1, unit: 's' }
+    ],
+    calc(attempt, p) { return p.duration; }
+  },
+  exponential: {
+    name: 'Exponential',
+    color: '#a78bfa',
+    badge: 'classic',
+    formula: 'delay = base \u00d7 multiplier^(attempt\u22121)',
+    desc: 'The classic backoff: each retry waits longer by a multiplicative factor. With defaults (base=1s, mult=2.0), produces: 1s, 2s, 4s, 8s, 16s, 32s... Capped at <code>maxDelay</code>.',
+    params: [
+      { id: 'baseDelay', label: 'Base Delay', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'multiplier', label: 'Multiplier', min: 1.1, max: 5, step: 0.1, default: 2, unit: 'x' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p) {
+      if (attempt <= 0) return p.baseDelay;
+      const d = p.baseDelay * Math.pow(p.multiplier, attempt - 1);
+      return p.maxDelay > 0 ? Math.min(d, p.maxDelay) : d;
+    }
+  },
+  linear: {
+    name: 'Linear',
+    color: '#34d399',
+    badge: 'steady',
+    formula: 'delay = increment \u00d7 attempt',
+    desc: 'Delays grow by a constant increment each attempt. Produces: 1s, 2s, 3s, 4s, 5s... Predictable growth that never accelerates. Good for sequential polling.',
+    params: [
+      { id: 'increment', label: 'Increment', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p) {
+      if (attempt <= 0) return p.increment;
+      const d = p.increment * attempt;
+      return p.maxDelay > 0 ? Math.min(d, p.maxDelay) : d;
+    }
+  },
+  jitter: {
+    name: 'Jitter',
+    color: '#fbbf24',
+    badge: 'random',
+    formula: 'delay = random(0, base \u00d7 mult^(n\u22121))',
+    desc: 'Full jitter on exponential backoff &mdash; returns a random delay between 0 and the exponential value. Critical for preventing the <em>thundering herd</em> problem where many clients retry simultaneously.',
+    params: [
+      { id: 'baseDelay', label: 'Base Delay', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'multiplier', label: 'Multiplier', min: 1.1, max: 5, step: 0.1, default: 2, unit: 'x' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p) {
+      if (attempt <= 0) return Math.random() * p.baseDelay;
+      let expD = p.baseDelay * Math.pow(p.multiplier, attempt - 1);
+      if (p.maxDelay > 0 && expD > p.maxDelay) expD = p.maxDelay;
+      return Math.random() * expD;
+    }
+  },
+  decorrelated: {
+    name: 'Decorrelated Jitter',
+    color: '#fb923c',
+    badge: 'AWS',
+    formula: 'delay = random(base, prev \u00d7 mult)',
+    desc: 'AWS\'s recommended algorithm. Unlike regular jitter, this is <em>stateful</em> &mdash; the next delay depends on the previous one: <code>random(baseDelay, prevDelay \u00d7 multiplier)</code>. Creates better distribution across retrying clients.',
+    params: [
+      { id: 'baseDelay', label: 'Base Delay', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'multiplier', label: 'Multiplier', min: 1.1, max: 5, step: 0.1, default: 2, unit: 'x' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p, state) {
+      let upper;
+      if (attempt <= 0 || !state.prev) {
+        upper = p.baseDelay * p.multiplier;
+      } else {
+        upper = state.prev * p.multiplier;
+      }
+      if (p.maxDelay > 0 && upper > p.maxDelay) upper = p.maxDelay;
+      if (upper < p.baseDelay) upper = p.baseDelay;
+      const range = upper - p.baseDelay;
+      const d = p.baseDelay + Math.random() * range;
+      state.prev = d;
+      return d;
+    }
+  },
+  fibonacci: {
+    name: 'Fibonacci',
+    color: '#f472b6',
+    badge: 'natural',
+    formula: 'delay = base \u00d7 fib(attempt)',
+    desc: 'Delays follow the Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21, 34... multiplied by the base delay. Growth sits between linear and exponential &mdash; a natural middle ground.',
+    params: [
+      { id: 'baseDelay', label: 'Base Delay', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p) {
+      if (attempt <= 0) return p.baseDelay;
+      const fib = fibonacci(attempt);
+      const d = p.baseDelay * fib;
+      return p.maxDelay > 0 ? Math.min(d, p.maxDelay) : d;
+    }
+  },
+  polynomial: {
+    name: 'Polynomial',
+    color: '#22d3ee',
+    badge: 'tunable',
+    formula: 'delay = base \u00d7 attempt^exponent',
+    desc: 'Configurable polynomial growth. The <code>exponent</code> gives fine-grained control: &lt;1.0 for sublinear (gentle), 1.0 for linear, 2.0 for quadratic, &gt;2.0 for aggressive growth approaching exponential.',
+    params: [
+      { id: 'baseDelay', label: 'Base Delay', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'exponent', label: 'Exponent', min: 0.2, max: 4, step: 0.1, default: 2, unit: '' },
+      { id: 'maxDelay', label: 'Max Delay', min: 1, max: 120, step: 1, default: 60, unit: 's' }
+    ],
+    calc(attempt, p) {
+      if (attempt <= 0) return p.baseDelay;
+      const d = p.baseDelay * Math.pow(attempt, p.exponent);
+      return p.maxDelay > 0 ? Math.min(d, p.maxDelay) : d;
+    }
+  },
+  adaptive: {
+    name: 'Adaptive',
+    color: '#4ade80',
+    badge: 'ML',
+    formula: 'delay = lr \u00d7 optimal + (1\u2212lr) \u00d7 fallback',
+    desc: 'Machine learning-inspired strategy that learns which delay durations lead to success. Tracks outcomes in exponentially-bucketed delay ranges, computes success rates via EMA, and blends the best-performing delay with a fallback strategy using the <code>learning rate</code>.',
+    params: [
+      { id: 'learningRate', label: 'Learning Rate', min: 0.01, max: 1.0, step: 0.01, default: 0.1, unit: '' },
+      { id: 'fallbackBase', label: 'Fallback Base', min: 0.1, max: 10, step: 0.1, default: 1, unit: 's' },
+      { id: 'fallbackMult', label: 'Fallback Mult', min: 1.1, max: 5, step: 0.1, default: 2, unit: 'x' }
+    ],
+    calc(attempt, p, state) {
+      // Simulate: fallback is exponential, "optimal" converges to a learned value
+      const fallback = p.fallbackBase * Math.pow(p.fallbackMult, Math.max(0, attempt - 1));
+      // Simulate learned optimal as a stabilized mid-range value
+      const optimal = 3 + Math.sin(attempt * 0.5) * 1.5;
+      if (!state.outcomes || state.outcomes < 3) {
+        state.outcomes = (state.outcomes || 0) + 1;
+        return Math.min(fallback, 60);
+      }
+      state.outcomes++;
+      const blended = p.learningRate * optimal + (1 - p.learningRate) * fallback;
+      return Math.min(blended, 60);
+    }
+  },
+  diophantine: {
+    name: 'Diophantine',
+    color: '#e879f9',
+    badge: 'math',
+    formula: 'schedule s.t. \u2200 window: count \u2264 limit',
+    desc: 'Proactive rate-limit compliance using Diophantine inequalities. Instead of reacting to 429s, it models the rate limit mathematically and ensures no time window will exceed the limit &mdash; even accounting for retry offsets. Designed for daemon-coordinated multi-instance scenarios.',
+    params: [
+      { id: 'rateLimit', label: 'Rate Limit', min: 5, max: 200, step: 5, default: 100, unit: 'req' },
+      { id: 'windowSec', label: 'Window', min: 10, max: 3600, step: 10, default: 3600, unit: 's' },
+      { id: 'baseRetry', label: 'Base Retry', min: 1, max: 60, step: 1, default: 10, unit: 's' }
+    ],
+    calc(attempt, p) {
+      // Fallback exponential when daemon unavailable
+      const base = p.baseRetry;
+      if (attempt <= 0) return base;
+      let d = base;
+      for (let i = 1; i < attempt; i++) {
+        d *= 2;
+        if (d > 3600) return 3600;
+      }
+      return d;
+    }
+  }
+};
+
+function fibonacci(n) {
+  if (n <= 2) return 1;
+  let a = 1, b = 1;
+  for (let i = 3; i <= n; i++) [a, b] = [b, a + b];
+  return b;
+}
+
+// =========== STATE ===========
+let currentStrategy = 'exponential';
+let params = {};
+let animId = null;
+let animStep = 0;
+let animDelays = [];
+const MAX_ATTEMPTS = 15;
+
+// =========== UI BUILDING ===========
+function buildStrategyList() {
+  const list = document.getElementById('strategyList');
+  list.innerHTML = '';
+  for (const [key, s] of Object.entries(STRATEGIES)) {
+    const btn = document.createElement('button');
+    btn.className = 'strategy-btn' + (key === currentStrategy ? ' active' : '');
+    btn.innerHTML = `<span class="dot" style="background:${s.color}"></span>${s.name}<span class="badge">${s.badge}</span>`;
+    btn.onclick = () => selectStrategy(key);
+    list.appendChild(btn);
+  }
+}
+
+function buildSliders() {
+  const container = document.getElementById('sliders');
+  container.innerHTML = '';
+  const s = STRATEGIES[currentStrategy];
+  params = {};
+
+  for (const p of s.params) {
+    params[p.id] = p.default;
+    const group = document.createElement('div');
+    group.className = 'slider-group';
+
+    const valDisplay = p.unit ? `${p.default}${p.unit}` : p.default;
+    group.innerHTML = `
+      <div class="slider-label">
+        <span>${p.label}</span>
+        <span id="val_${p.id}">${valDisplay}</span>
+      </div>
+      <input type="range" id="sl_${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.default}">
+    `;
+    container.appendChild(group);
+
+    const slider = group.querySelector('input');
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      params[p.id] = v;
+      const display = p.unit ? `${v}${p.unit}` : v;
+      document.getElementById(`val_${p.id}`).textContent = display;
+      recalculate();
+    });
+  }
+
+  document.getElementById('formulaBox').textContent = s.formula;
+  document.getElementById('descText').innerHTML = s.desc;
+}
+
+function selectStrategy(key) {
+  currentStrategy = key;
+  stopAnimation();
+  buildStrategyList();
+  buildSliders();
+  recalculate();
+}
+
+// =========== CALCULATION ===========
+function computeDelays(stratKey, paramOverrides, count) {
+  const s = STRATEGIES[stratKey];
+  const p = paramOverrides || params;
+  const state = {};
+  const delays = [];
+  for (let i = 1; i <= count; i++) {
+    delays.push(s.calc(i, p, state));
+  }
+  return delays;
+}
+
+function recalculate() {
+  animDelays = computeDelays(currentStrategy, params, MAX_ATTEMPTS);
+  drawChart();
+  drawTimeline(animDelays.length);
+  updateStats(animDelays);
+  updateComparison();
+}
+
+// =========== CHART ===========
+function drawChart() {
+  const canvas = document.getElementById('chartCanvas');
+  const container = canvas.parentElement;
+  const w = container.clientWidth - 48;
+  const h = 310;
+  canvas.width = w * devicePixelRatio;
+  canvas.height = h * devicePixelRatio;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  const padL = 55, padR = 20, padT = 10, padB = 35;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Compute all strategy delays for ghost lines
+  const allDelays = {};
+  for (const key of Object.keys(STRATEGIES)) {
+    if (key === currentStrategy) {
+      allDelays[key] = animDelays;
+    } else {
+      // Use shared params where applicable or defaults
+      const s = STRATEGIES[key];
+      const dp = {};
+      for (const p of s.params) dp[p.id] = p.default;
+      allDelays[key] = computeDelays(key, dp, MAX_ATTEMPTS);
+    }
+  }
+
+  // Y-axis scale
+  const maxVal = Math.max(1, ...animDelays) * 1.15;
+  const n = animDelays.length;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(46,51,71,0.6)';
+  ctx.lineWidth = 1;
+  const yTicks = 5;
+  ctx.font = '11px Inter, sans-serif';
+  ctx.fillStyle = '#8b8fa7';
+  ctx.textAlign = 'right';
+
+  for (let i = 0; i <= yTicks; i++) {
+    const y = padT + plotH - (i / yTicks) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + plotW, y);
+    ctx.stroke();
+    const val = (maxVal * i / yTicks);
+    ctx.fillText(formatSec(val), padL - 8, y + 4);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  for (let i = 0; i < n; i++) {
+    const x = padL + (i / (n - 1)) * plotW;
+    ctx.fillText(i + 1, x, h - 8);
+  }
+
+  ctx.fillText('Attempt', padL + plotW / 2, h - 0);
+
+  // Ghost lines for other strategies
+  for (const [key, delays] of Object.entries(allDelays)) {
+    if (key === currentStrategy) continue;
+    const s = STRATEGIES[key];
+    ctx.strokeStyle = s.color + '18';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < delays.length; i++) {
+      const x = padL + (i / (n - 1)) * plotW;
+      const y = padT + plotH - (Math.min(delays[i], maxVal) / maxVal) * plotH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Main line
+  const color = STRATEGIES[currentStrategy].color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < animDelays.length; i++) {
+    const x = padL + (i / (n - 1)) * plotW;
+    const y = padT + plotH - (Math.min(animDelays[i], maxVal) / maxVal) * plotH;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Area fill
+  ctx.fillStyle = color + '15';
+  ctx.beginPath();
+  for (let i = 0; i < animDelays.length; i++) {
+    const x = padL + (i / (n - 1)) * plotW;
+    const y = padT + plotH - (Math.min(animDelays[i], maxVal) / maxVal) * plotH;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.lineTo(padL + plotW, padT + plotH);
+  ctx.lineTo(padL, padT + plotH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Dots
+  for (let i = 0; i < animDelays.length; i++) {
+    const x = padL + (i / (n - 1)) * plotW;
+    const y = padT + plotH - (Math.min(animDelays[i], maxVal) / maxVal) * plotH;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0f1117';
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Highlight animation step
+  if (animStep > 0 && animStep <= animDelays.length) {
+    const i = animStep - 1;
+    const x = padL + (i / (n - 1)) * plotW;
+    const y = padT + plotH - (Math.min(animDelays[i], maxVal) / maxVal) * plotH;
+
+    // Pulse ring
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Value label
+    ctx.fillStyle = color;
+    ctx.font = 'bold 12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatSec(animDelays[i]), x, y - 16);
+  }
+}
+
+// =========== TIMELINE ===========
+function drawTimeline(upTo) {
+  const track = document.getElementById('timelineTrack');
+  const axis = document.getElementById('timelineAxis');
+
+  // Remove old markers
+  track.querySelectorAll('.attempt-marker, .delay-bar').forEach(el => el.remove());
+  axis.innerHTML = '';
+
+  const delays = animDelays.slice(0, upTo);
+  // Cumulative times
+  const times = [0]; // time 0 = first attempt starts
+  for (let i = 0; i < delays.length; i++) {
+    times.push(times[i] + delays[i]);
+  }
+  const totalTime = times[times.length - 1] || 1;
+
+  const trackW = track.clientWidth;
+  const color = STRATEGIES[currentStrategy].color;
+
+  // Draw markers and delay bars
+  for (let i = 0; i < times.length; i++) {
+    const pct = (times[i] / totalTime) * 100;
+    const leftPx = Math.max(7, Math.min(trackW - 7, (pct / 100) * trackW));
+
+    // Attempt marker
+    const marker = document.createElement('div');
+    marker.className = 'attempt-marker';
+    marker.style.left = leftPx + 'px';
+    marker.style.background = i <= animStep - 1 ? color : color + '40';
+    marker.innerHTML = `
+      <div class="marker-dot" style="background:${i <= animStep - 1 ? color : color + '40'}"></div>
+      <div class="marker-label" style="color:${color}">${i + 1}</div>
+    `;
+    track.appendChild(marker);
+
+    // Delay bar between this and next
+    if (i < delays.length) {
+      const nextPct = (times[i + 1] / totalTime) * 100;
+      const nextPx = Math.max(7, Math.min(trackW - 7, (nextPct / 100) * trackW));
+      const bar = document.createElement('div');
+      bar.className = 'delay-bar';
+      bar.style.left = (leftPx + 2) + 'px';
+      bar.style.width = Math.max(0, nextPx - leftPx - 4) + 'px';
+      bar.style.background = color;
+      bar.style.opacity = i < animStep ? '0.45' : '0.15';
+      if (nextPx - leftPx > 35) {
+        bar.innerHTML = `<span class="delay-label">${formatSec(delays[i])}</span>`;
+      }
+      track.appendChild(bar);
+    }
+  }
+
+  // Axis labels
+  const tickCount = Math.min(8, Math.ceil(totalTime / 5));
+  for (let i = 0; i <= tickCount; i++) {
+    const t = (totalTime * i / tickCount);
+    const pct = (t / totalTime) * 100;
+    const span = document.createElement('span');
+    span.style.left = pct + '%';
+    span.textContent = formatSec(t);
+    axis.appendChild(span);
+  }
+}
+
+// =========== STATS ===========
+function updateStats(delays) {
+  const total = delays.reduce((a, b) => a + b, 0);
+  const avg = delays.length > 0 ? total / delays.length : 0;
+  document.getElementById('statTotal').textContent = formatSec(total);
+  document.getElementById('statAttempts').textContent = delays.length;
+  document.getElementById('statAvg').textContent = formatSec(avg);
+}
+
+// =========== COMPARISON TABLE ===========
+function updateComparison() {
+  const body = document.getElementById('compBody');
+  body.innerHTML = '';
+  const checkpoints = [1, 3, 5, 8, 10];
+
+  for (const [key, s] of Object.entries(STRATEGIES)) {
+    const dp = {};
+    for (const p of s.params) dp[p.id] = p.default;
+    // Use current params if this is the active strategy
+    const useParams = key === currentStrategy ? params : dp;
+    const delays = computeDelays(key, useParams, 10);
+
+    const tr = document.createElement('tr');
+    const isCurrent = key === currentStrategy;
+    tr.style.background = isCurrent ? 'rgba(108,140,255,0.06)' : '';
+
+    let cells = `<td><span class="strat-dot" style="background:${s.color}"></span>${s.name}</td>`;
+    for (const cp of checkpoints) {
+      cells += `<td>${formatSec(delays[cp - 1] || 0)}</td>`;
+    }
+    const total = delays.reduce((a, b) => a + b, 0);
+    cells += `<td style="font-weight:600">${formatSec(total)}</td>`;
+    tr.innerHTML = cells;
+    body.appendChild(tr);
+  }
+}
+
+// =========== ANIMATION ===========
+function startAnimation() {
+  stopAnimation();
+  animStep = 0;
+  // Recompute with fresh random values for jitter strategies
+  animDelays = computeDelays(currentStrategy, params, MAX_ATTEMPTS);
+  drawChart();
+  drawTimeline(animDelays.length);
+
+  const speed = parseFloat(document.getElementById('speedSelect').value);
+  const baseInterval = 600 / speed;
+
+  function step() {
+    animStep++;
+    if (animStep > MAX_ATTEMPTS) {
+      animStep = MAX_ATTEMPTS;
+      drawChart();
+      drawTimeline(animDelays.length);
+      return;
+    }
+    drawChart();
+    drawTimeline(animDelays.length);
+
+    // Next step delay proportional to the backoff delay (scaled)
+    const delay = animDelays[animStep - 1] || 1;
+    const scaledDelay = Math.max(80, Math.min(1500, delay * 150)) / speed;
+    animId = setTimeout(step, scaledDelay);
+  }
+
+  step();
+}
+
+function stopAnimation() {
+  if (animId) {
+    clearTimeout(animId);
+    animId = null;
+  }
+}
+
+function resetAnimation() {
+  stopAnimation();
+  animStep = 0;
+  animDelays = computeDelays(currentStrategy, params, MAX_ATTEMPTS);
+  drawChart();
+  drawTimeline(animDelays.length);
+  updateStats(animDelays);
+}
+
+// =========== UTILITIES ===========
+function formatSec(v) {
+  if (v === undefined || v === null || isNaN(v)) return '0s';
+  if (v >= 3600) return (v / 3600).toFixed(1) + 'h';
+  if (v >= 60) {
+    const m = Math.floor(v / 60);
+    const s = Math.round(v % 60);
+    return s > 0 ? `${m}m${s}s` : `${m}m`;
+  }
+  if (v >= 10) return Math.round(v) + 's';
+  if (v >= 1) return v.toFixed(1) + 's';
+  if (v >= 0.01) return (v * 1000).toFixed(0) + 'ms';
+  return '0s';
+}
+
+// =========== INIT ===========
+document.getElementById('btnAnimate').addEventListener('click', startAnimation);
+document.getElementById('btnReset').addEventListener('click', resetAnimation);
+
+window.addEventListener('resize', () => {
+  drawChart();
+  drawTimeline(animDelays.length);
+});
+
+buildStrategyList();
+buildSliders();
+recalculate();
+</script>
+</body>
+</html>
