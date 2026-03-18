@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>patience — Backoff Strategy Visualiser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary:    #0a0e17;
+      --bg-secondary:  #111827;
+      --bg-tertiary:   #1e293b;
+      --text-primary:  #e2e8f0;
+      --text-secondary:#94a3b8;
+      --accent-cyan:   #22d3ee;
+      --accent-amber:  #f59e0b;
+      --accent-emerald:#34d399;
+      --accent-rose:   #fb7185;
+      --accent-violet: #a78bfa;
+      --border-subtle: #1e293b;
+      --border-focus:  #22d3ee33;
+      --font-display:  'Inter', system-ui, sans-serif;
+      --font-mono:     'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-display);
+      font-size: 15px;
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 16px 24px;
+    }
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .repo-name {
+      font-family: var(--font-mono);
+      color: var(--accent-cyan);
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .repo-name:hover { text-decoration: underline; }
+    .header-sep { color: var(--border-subtle); }
+    .header-desc { color: var(--text-secondary); font-size: 14px; flex: 1; }
+    .lang-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      color: #00add8;
+      background: #0a1f2a;
+      border: 1px solid #00add833;
+    }
+
+    /* ── Layout ── */
+    main {
+      flex: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .card-title {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    /* ── Chart ── */
+    .chart-wrap { position: relative; width: 100%; }
+    canvas { display: block; width: 100%; border-radius: 4px; cursor: crosshair; }
+
+    .chart-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+    .legend-line { width: 20px; height: 2px; border-radius: 1px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-emerald); }
+
+    /* ── Tooltip ── */
+    .tooltip {
+      position: absolute;
+      background: var(--bg-secondary);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 120ms ease;
+      white-space: nowrap;
+      z-index: 10;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      line-height: 1.8;
+    }
+    .tooltip.visible { opacity: 1; }
+    .tooltip-attempt {
+      color: var(--text-secondary);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .tooltip-row { display: flex; gap: 8px; align-items: center; }
+    .tooltip-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Strategy Selectors ── */
+    .selectors-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .selector-wrap { display: flex; flex-direction: column; gap: 8px; }
+    .selector-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .strategy-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    select {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: var(--font-display);
+      font-size: 14px;
+      cursor: pointer;
+      outline: none;
+      width: 100%;
+      transition: border-color 200ms ease, box-shadow 200ms ease;
+    }
+    select:hover, select:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 2px var(--border-focus);
+    }
+
+    /* ── Parameters ── */
+    .params-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .params-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    .sliders-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    .control-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .control-value { color: var(--accent-cyan); font-weight: 500; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--bg-tertiary);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(34,211,238,0.4);
+      transition: box-shadow 200ms ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { box-shadow: 0 0 12px rgba(34,211,238,0.7); }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px; height: 16px;
+      background: var(--accent-cyan);
+      border: none; border-radius: 50%; cursor: pointer;
+    }
+
+    /* ── Jitter Toggle ── */
+    .toggle-wrap { display: flex; align-items: center; gap: 12px; padding-top: 20px; }
+    .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      transition: 200ms ease;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 18px; height: 18px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      top: 2px; left: 2px;
+      transition: 200ms ease;
+    }
+    .toggle input:checked + .toggle-slider { background: rgba(34,211,238,0.15); border-color: var(--accent-cyan); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: var(--accent-cyan); }
+    .toggle-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      line-height: 1;
+    }
+    .toggle-desc { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+    /* ── Stats ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+    .stat-block { padding: 0 16px; }
+    .stat-block:first-child { padding-left: 0; }
+    .stat-block:last-child { padding-right: 0; }
+    .stat-block + .stat-block { border-left: 1px solid var(--border-subtle); }
+    .stat-name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .stat-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+
+    /* ── Annotations ── */
+    .annotations-list { display: flex; flex-direction: column; gap: 20px; }
+    .annotation-item { display: flex; gap: 14px; align-items: flex-start; }
+    .annotation-marker {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding-top: 3px;
+    }
+    .annotation-line { width: 16px; height: 2px; border-radius: 1px; }
+    .annotation-text { font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
+    .annotation-text strong { color: var(--text-primary); font-weight: 600; }
+    .annotation-text em { color: var(--accent-amber); font-style: normal; font-size: 12px; font-family: var(--font-mono); }
+    .annotation-text code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-tertiary);
+      color: var(--accent-cyan);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── Tooltip info icon ── */
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 1px solid var(--text-secondary);
+      color: var(--text-secondary);
+      font-size: 9px;
+      font-family: var(--font-mono);
+      cursor: help;
+      position: relative;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+    .info-icon:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-secondary);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      white-space: normal;
+      width: 240px;
+      z-index: 100;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 16px 24px;
+      margin-top: auto;
+    }
+    .footer-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-text { font-size: 13px; color: var(--text-secondary); }
+    .footer-links { display: flex; gap: 16px; }
+    .footer-links a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+      font-size: 13px;
+      font-family: var(--font-mono);
+    }
+    .footer-links a:hover { text-decoration: underline; }
+
+    /* ── Entry animations ── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { opacity: 0; animation: fadeInUp 300ms ease forwards; }
+    .fade-in:nth-child(1) { animation-delay:  0ms; }
+    .fade-in:nth-child(2) { animation-delay: 50ms; }
+    .fade-in:nth-child(3) { animation-delay:100ms; }
+    .fade-in:nth-child(4) { animation-delay:150ms; }
+    .fade-in:nth-child(5) { animation-delay:200ms; }
+    .fade-in:nth-child(6) { animation-delay:250ms; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .selectors-grid  { grid-template-columns: 1fr; }
+      .sliders-grid    { grid-template-columns: 1fr 1fr; }
+      .stats-grid      { grid-template-columns: 1fr; }
+      .params-row      { grid-template-columns: 1fr; }
+      .toggle-wrap     { padding-top: 0; }
+      .stat-block      { padding: 14px 0 0 0; }
+      .stat-block + .stat-block { border-left: none; border-top: 1px solid var(--border-subtle); }
+      .stat-block:first-child { padding-top: 0; }
+    }
+    @media (max-width: 480px) {
+      body  { font-size: 14px; }
+      main  { padding: 24px 16px; gap: 16px; }
+      .card { padding: 16px; }
+      .sliders-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ HEADER -->
+<header>
+  <div class="header-inner">
+    <a href="#" class="repo-name">patience</a>
+    <span class="header-sep">/</span>
+    <span class="header-desc">Compare delay curves across 10 retry backoff strategies — adjust parameters and watch the math change in real time</span>
+    <span class="lang-badge">Go</span>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════ MAIN -->
+<main>
+
+  <!-- Chart -->
+  <div class="card fade-in">
+    <div class="card-title">Delay Curve — Attempt Number vs Wait Duration</div>
+    <div id="legend" class="chart-legend"></div>
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+  </div>
+
+  <!-- Strategy selectors -->
+  <div class="card fade-in">
+    <div class="card-title">Strategy Selection — Plot up to 3 simultaneously</div>
+    <div class="selectors-grid" id="selectors-grid"></div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="card fade-in">
+    <div class="card-title">Parameters</div>
+    <div class="params-layout">
+      <div class="params-row">
+        <div class="toggle-wrap">
+          <label class="toggle">
+            <input type="checkbox" id="jitter-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div class="toggle-label">Jitter</div>
+            <div class="toggle-desc">Spread retry timing randomly</div>
+          </div>
+        </div>
+        <div class="sliders-grid" id="sliders-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card fade-in">
+    <div class="card-title">Statistics — 50 retry attempts</div>
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+
+  <!-- Annotations -->
+  <div class="card fade-in">
+    <div class="card-title">Why You'd Pick Each Strategy</div>
+    <div class="annotations-list" id="annotations-list"></div>
+  </div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════ FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <span class="footer-text">Part of Shane Isley's project portfolio</span>
+    <div class="footer-links">
+      <a href="#">Portfolio</a>
+      <a href="https://github.com/shaneisley/patience" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════════ SCRIPT -->
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────
+//  CONSTANTS
+// ─────────────────────────────────────────────────────────────────
+const NUM_ATTEMPTS  = 50;
+const ANIM_DURATION = 900; // ms
+const LINE_COLORS   = ['#22d3ee', '#f59e0b', '#a78bfa'];
+
+// DPR-aware canvas context
+const canvas = document.getElementById('chart');
+const cx     = canvas.getContext('2d');
+
+// ─────────────────────────────────────────────────────────────────
+//  UTILITIES
+// ─────────────────────────────────────────────────────────────────
+function fibN(n) {
+  if (n <= 1) return 1;
+  let a = 1, b = 1;
+  for (let i = 2; i < n; i++) [a, b] = [b, a + b];
+  return b;
+}
+
+function formatMs(ms) {
+  if (ms < 1000)   return `${Math.round(ms)}ms`;
+  if (ms < 60000)  return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1000;
+  const mag  = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const n of [1, 2, 5, 10]) {
+    if (n * mag >= v) return n * mag;
+  }
+  return Math.ceil(v / mag) * mag;
+}
+
+// Stable pseudo-random — same seed → same sequence
+function makePRNG(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = Math.imul(s ^ (s >>> 15), 1 | s);
+    s ^= s + Math.imul(s ^ (s >>> 7), 61 | s);
+    return ((s ^ (s >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Generate fixed success/failure pattern from failureRate (0-100)
+function successPattern(failureRate) {
+  const rng = makePRNG(0xdeadbeef);
+  return Array.from({ length: NUM_ATTEMPTS }, () => rng() >= failureRate / 100);
+}
+
+// Ease-in-out quadratic
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  STRATEGY DEFINITIONS
+//  Each strategy exposes:
+//    .name      — display name
+//    .desc      — annotation HTML
+//    .approx    — optional tooltip explaining approximation
+//    .compute(n, params, ctx) → delay in ms for attempt n (1-indexed)
+//                ctx is a per-strategy mutable object reset each run
+// ─────────────────────────────────────────────────────────────────
+const STRATEGIES = {
+
+  fixed: {
+    name: 'Fixed',
+    desc: '<strong>Fixed</strong> waits the same amount after every failure. Use it when the service needs a known, specific recovery time — e.g. a cache with a 2-second warm-up. Predictable but inefficient: wastes time on fast transients and may still overwhelm a slow recovery.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const d = Math.min(baseDelay, maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  linear: {
+    name: 'Linear',
+    desc: '<strong>Linear</strong> backoff adds a constant increment each attempt, giving services progressively more breathing room. It\'s gentler than exponential — a natural fit for database reconnections where you want steady escalation without geometric explosion.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const d = Math.min(baseDelay * n, maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  exponential: {
+    name: 'Exponential',
+    desc: '<strong>Exponential</strong> backoff is the default choice for unknown failure modes. It backs off aggressively enough to avoid hammering a recovering service (<code>base × 2ⁿ⁻¹</code>) while still retrying quickly for transient errors. The industry standard for APIs and microservices.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const d = Math.min(baseDelay * Math.pow(2, n - 1), maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  jitter: {
+    name: 'Full Jitter',
+    desc: '<strong>Full Jitter</strong> randomises each delay uniformly between 0 and the exponential cap. This breaks retry synchronisation — if 100 instances all fail at once, they retry at scattered times rather than re-hitting the service together. Toggle Jitter on/off to see the curve spread.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const cap = Math.min(baseDelay * Math.pow(2, n - 1), maxDelay);
+      return jitter ? Math.random() * cap : cap * 0.5;
+    }
+  },
+
+  decorrelated: {
+    name: 'Decorrelated Jitter',
+    desc: '<strong>Decorrelated Jitter</strong> (AWS-recommended) seeds each delay from the previous one: <code>rand(base, prev × 3)</code>. This "decorrelates" clients so they don\'t cluster at the same intervals. Proven to produce lower average delay than full jitter while still preventing herding.',
+    compute(n, { baseDelay, maxDelay, jitter }, ctx) {
+      if (n === 1) ctx.prev = baseDelay;
+      const upper = Math.min(ctx.prev * 3, maxDelay);
+      const d = jitter
+        ? baseDelay + Math.random() * Math.max(0, upper - baseDelay)
+        : (baseDelay + upper) / 2;
+      ctx.prev = Math.max(baseDelay, Math.min(d, maxDelay));
+      return ctx.prev;
+    }
+  },
+
+  fibonacci: {
+    name: 'Fibonacci',
+    desc: '<strong>Fibonacci</strong> backoff follows the sequence 1, 1, 2, 3, 5, 8… — sub-exponential growth that retries quickly early and slows gracefully. A good middle ground when you expect recovery within a handful of attempts but want slowdown to kick in if it drags.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const d = Math.min(baseDelay * fibN(n), maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  polynomial: {
+    name: 'Polynomial',
+    desc: '<strong>Polynomial</strong> backoff computes <code>base × attemptᵉˣᵖ</code>. Exponent=1 is linear; exponent=2 is quadratic. Use it when you need finer control over growth rate than the rigid doubling of exponential allows — tune the exponent to match your failure mode.',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      const d = Math.min(baseDelay * Math.pow(n, 2), maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  adaptive: {
+    name: 'Adaptive (EMA)',
+    desc: '<strong>Adaptive</strong> backoff measures real success rates via an exponential moving average, tightening delays when success rates rise and backing off when failure rates climb. Self-tuning — ideal when failure characteristics shift over time. Drag the Failure Rate slider to see it respond.',
+    compute(n, { baseDelay, maxDelay, failureRate, jitter }, ctx) {
+      if (n === 1) { ctx.ema = baseDelay; ctx.successRate = 1 - failureRate / 100; }
+      // EMA of success rate drives a multiplier: low success → longer delays
+      ctx.successRate = 0.8 * ctx.successRate + 0.2 * (1 - failureRate / 100);
+      const multiplier = 1 / Math.max(0.05, ctx.successRate);
+      ctx.ema = 0.7 * ctx.ema + 0.3 * (baseDelay * multiplier);
+      const d = Math.min(ctx.ema, maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  httpaware: {
+    name: 'HTTP-Aware',
+    desc: '<strong>HTTP-Aware</strong> reads <code>Retry-After</code> headers, <code>X-RateLimit-Reset</code> timestamps, and JSON retry fields from command output, letting the server dictate timing. Falls back to exponential when no hint is found. <em>Simulated: every 5th attempt receives a server-specified override.</em>',
+    compute(n, { baseDelay, maxDelay, jitter }) {
+      // Server-sent Retry-After hint every 5 attempts
+      if (n % 5 === 0) {
+        const hint = Math.min(maxDelay * 0.35, baseDelay * 7);
+        return jitter ? hint * (0.75 + Math.random() * 0.5) : hint;
+      }
+      const d = Math.min(baseDelay * Math.pow(2, n - 1), maxDelay);
+      return jitter ? d * (0.5 + Math.random() * 0.5) : d;
+    }
+  },
+
+  diophantine: {
+    name: 'Diophantine',
+    approx: 'The real algorithm checks whether the full planned retry schedule fits within a sliding rate-limit window, coordinated across instances via a Unix socket daemon. This demo approximates it with a local sliding-window token budget: rateLimit=10 requests per 20s window. The sawtooth spikes show when the budget is exhausted and patience must wait for old slots to expire.',
+    desc: '<strong>Diophantine</strong> proactively checks whether your entire planned retry schedule fits within the rate-limit window <em>before</em> sending any request. Coordinated via a Unix socket daemon, all instances collectively stay under the limit. The periodic spikes show the budget refilling after window expiry. <em>Approximation: sliding-window token budget, 10 req / 20 s.</em>',
+    compute(n, { baseDelay, maxDelay, jitter }, ctx) {
+      if (n === 1) { ctx.times = []; ctx.rl = 10; ctx.win = 20000; }
+      const rl  = ctx.rl;
+      const win = ctx.win;
+      const lastTime = ctx.times.length > 0 ? ctx.times[ctx.times.length - 1] : 0;
+      let candidate = lastTime + Math.max(baseDelay, 50);
+
+      // Find earliest slot that satisfies the sliding window constraint
+      for (let iter = 0; iter < 2000; iter++) {
+        const windowStart = candidate - win;
+        const inWindow = ctx.times.filter(t => t > windowStart).length;
+        if (inWindow < rl) break;
+        // Wait one slot-width (window / rateLimit) and try again
+        candidate += win / rl;
+      }
+
+      const delay = Math.min(Math.max(candidate - lastTime, baseDelay), maxDelay);
+      ctx.times.push(candidate);
+      return jitter ? delay * (0.85 + Math.random() * 0.3) : delay;
+    }
+  }
+
+};
+
+// ─────────────────────────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────────────────────────
+const state = {
+  selected:    ['exponential', 'linear', 'diophantine'],
+  baseDelay:   500,   // ms
+  maxDelay:    30000, // ms
+  failureRate: 50,    // %
+  jitter:      false,
+};
+
+// Cached computed delays — recomputed on every state change
+let cache = null;
+// Offscreen canvas snapshot (used for crosshair hover)
+let snapshot = null;
+
+// ─────────────────────────────────────────────────────────────────
+//  COMPUTE
+// ─────────────────────────────────────────────────────────────────
+function computeDelays() {
+  const successes = successPattern(state.failureRate);
+
+  cache = state.selected.map((id, si) => {
+    const strat = STRATEGIES[id];
+    if (!strat) return null;
+    const ctx = {};
+    const delays = [];
+    for (let n = 1; n <= NUM_ATTEMPTS; n++) {
+      const d = strat.compute(n, {
+        baseDelay:   state.baseDelay,
+        maxDelay:    state.maxDelay,
+        failureRate: state.failureRate,
+        jitter:      state.jitter,
+      }, ctx);
+      delays.push(Math.max(0, d));
+    }
+    return { id, strat, delays, color: LINE_COLORS[si], successes };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  CANVAS SETUP
+// ─────────────────────────────────────────────────────────────────
+let canvasW = 0, canvasH = 0;
+const PAD = { top: 24, right: 24, bottom: 52, left: 68 };
+
+function setupCanvas() {
+  const dpr  = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvasW = rect.width;
+  canvasH = Math.round(rect.width * 0.44);
+  canvas.style.height = canvasH + 'px';
+  canvas.width  = Math.round(canvasW * dpr);
+  canvas.height = Math.round(canvasH * dpr);
+  cx.scale(dpr, dpr);
+}
+
+function chartArea() {
+  return {
+    x: PAD.left,
+    y: PAD.top,
+    w: canvasW - PAD.left - PAD.right,
+    h: canvasH - PAD.top  - PAD.bottom,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  DRAW
+// ─────────────────────────────────────────────────────────────────
+function drawChart(progress) {
+  if (!cache) return;
+  setupCanvas();
+
+  const { x: cx0, y: cy0, w: cw, h: ch } = chartArea();
+
+  // Background
+  cx.fillStyle = '#0a0e17';
+  cx.fillRect(0, 0, canvasW, canvasH);
+
+  // Find y-max
+  let yMax = state.maxDelay * 0.5; // floor so small values are visible
+  cache.forEach(d => {
+    if (!d) return;
+    d.delays.forEach(v => { if (v > yMax) yMax = v; });
+  });
+  yMax = niceMax(yMax);
+
+  const toX = i => cx0 + (i / (NUM_ATTEMPTS - 1)) * cw;
+  const toY = v => cy0 + ch - Math.min((v / yMax) * ch, ch);
+
+  // Grid lines + Y labels
+  const GRID_N = 5;
+  cx.font = '11px "JetBrains Mono", monospace';
+  cx.textAlign = 'right';
+  cx.textBaseline = 'middle';
+  for (let i = 0; i <= GRID_N; i++) {
+    const vy = (i / GRID_N) * yMax;
+    const py = cy0 + ch - (i / GRID_N) * ch;
+    cx.strokeStyle = '#1e293b';
+    cx.lineWidth = 1;
+    cx.setLineDash([]);
+    cx.beginPath(); cx.moveTo(cx0, py); cx.lineTo(cx0 + cw, py); cx.stroke();
+    cx.fillStyle = '#64748b';
+    cx.fillText(formatMs(vy), cx0 - 8, py);
+  }
+
+  // X labels
+  cx.textAlign = 'center';
+  cx.textBaseline = 'top';
+  cx.fillStyle = '#64748b';
+  const step = Math.ceil(NUM_ATTEMPTS / 10);
+  for (let i = 1; i <= NUM_ATTEMPTS; i += step) {
+    const px = toX(i - 1);
+    cx.fillText(i, px, cy0 + ch + 10);
+    cx.strokeStyle = '#1e293b';
+    cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(px, cy0 + ch); cx.lineTo(px, cy0 + ch + 4); cx.stroke();
+  }
+
+  // Axis labels
+  cx.fillStyle = '#64748b';
+  cx.font = '11px "JetBrains Mono", monospace';
+  cx.textAlign = 'center';
+  cx.fillText('attempt #', cx0 + cw / 2, canvasH - 12);
+  cx.save();
+  cx.translate(13, cy0 + ch / 2);
+  cx.rotate(-Math.PI / 2);
+  cx.fillText('delay', 0, 0);
+  cx.restore();
+
+  // Axes
+  cx.strokeStyle = '#1e293b';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(cx0, cy0); cx.lineTo(cx0, cy0 + ch);
+  cx.lineTo(cx0 + cw, cy0 + ch);
+  cx.stroke();
+
+  // Max visible index driven by animation progress
+  const maxIdx = Math.min(NUM_ATTEMPTS - 1, Math.floor(easeInOut(progress) * (NUM_ATTEMPTS - 1)));
+
+  // Strategy lines
+  cache.forEach(data => {
+    if (!data) return;
+
+    // Draw line up to maxIdx
+    cx.beginPath();
+    cx.strokeStyle = data.color;
+    cx.lineWidth = 2.5;
+    cx.lineJoin = 'round';
+    cx.setLineDash([]);
+    for (let i = 0; i <= maxIdx; i++) {
+      const px = toX(i);
+      const py = toY(data.delays[i]);
+      i === 0 ? cx.moveTo(px, py) : cx.lineTo(px, py);
+    }
+    cx.stroke();
+
+    // Success dots
+    for (let i = 0; i <= maxIdx; i++) {
+      if (!data.successes[i]) continue;
+      const px = toX(i);
+      const py = toY(data.delays[i]);
+      cx.beginPath();
+      cx.arc(px, py, 4.5, 0, Math.PI * 2);
+      cx.fillStyle = '#34d399';
+      cx.fill();
+      cx.strokeStyle = '#0a0e17';
+      cx.lineWidth = 1.5;
+      cx.stroke();
+    }
+
+    // Animated head glow
+    if (progress < 1 && maxIdx < NUM_ATTEMPTS - 1) {
+      const px = toX(maxIdx);
+      const py = toY(data.delays[maxIdx]);
+      cx.beginPath();
+      cx.arc(px, py, 5, 0, Math.PI * 2);
+      cx.fillStyle = data.color;
+      cx.fill();
+      // Glow
+      const grad = cx.createRadialGradient(px, py, 0, px, py, 12);
+      grad.addColorStop(0, data.color + '66');
+      grad.addColorStop(1, 'transparent');
+      cx.beginPath();
+      cx.arc(px, py, 12, 0, Math.PI * 2);
+      cx.fillStyle = grad;
+      cx.fill();
+    }
+  });
+
+  // Save snapshot for hover crosshair when animation completes
+  if (progress >= 1) {
+    snapshot = cx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  ANIMATION
+// ─────────────────────────────────────────────────────────────────
+let animRaf = null;
+let animStart = null;
+
+function startAnimation() {
+  computeDelays();
+  snapshot = null;
+  if (animRaf) cancelAnimationFrame(animRaf);
+  animStart = null;
+
+  function frame(ts) {
+    if (document.hidden) { animRaf = requestAnimationFrame(frame); return; }
+    if (!animStart) animStart = ts;
+    const t = Math.min((ts - animStart) / ANIM_DURATION, 1);
+    drawChart(t);
+    if (t < 1) {
+      animRaf = requestAnimationFrame(frame);
+    } else {
+      updateStats();
+      updateLegend();
+      updateAnnotations();
+    }
+  }
+  animRaf = requestAnimationFrame(frame);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  TOOLTIP / CROSSHAIR
+// ─────────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+
+canvas.addEventListener('mousemove', e => {
+  if (!cache || !snapshot) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr  = window.devicePixelRatio || 1;
+  const mx   = e.clientX - rect.left;
+  const { x: cx0, y: cy0, w: cw, h: ch } = chartArea();
+
+  const relX = mx - cx0;
+  if (relX < 0 || relX > cw) { tooltip.classList.remove('visible'); return; }
+
+  const attempt = Math.round((relX / cw) * (NUM_ATTEMPTS - 1));
+
+  // Restore snapshot and draw crosshair
+  cx.putImageData(snapshot, 0, 0);
+  const px = cx0 + (attempt / (NUM_ATTEMPTS - 1)) * cw;
+  cx.strokeStyle = '#1e293b';
+  cx.lineWidth = 1;
+  cx.setLineDash([4, 4]);
+  cx.beginPath(); cx.moveTo(px, cy0); cx.lineTo(px, cy0 + ch); cx.stroke();
+  cx.setLineDash([]);
+
+  // Draw dots at current hover point for each strategy
+  cache.forEach(data => {
+    if (!data) return;
+    const py = cy0 + ch - Math.min((data.delays[attempt] / (niceMax(Math.max(...cache.filter(Boolean).flatMap(d => d.delays))))) * ch, ch);
+    cx.beginPath();
+    cx.arc(px, py, 5, 0, Math.PI * 2);
+    cx.fillStyle = data.color;
+    cx.fill();
+  });
+
+  // Build tooltip HTML
+  const lines = cache
+    .filter(Boolean)
+    .map(d => `<div class="tooltip-row"><span class="tooltip-swatch" style="background:${d.color}"></span>${d.strat.name}: <strong>${formatMs(d.delays[attempt])}</strong>${d.successes[attempt] ? ' ✓' : ''}</div>`)
+    .join('');
+  tooltip.innerHTML = `<div class="tooltip-attempt">Attempt ${attempt + 1}</div>${lines}`;
+  tooltip.classList.add('visible');
+
+  // Position tooltip
+  let tx = mx + 14, ty = e.clientY - rect.top - 20;
+  if (tx + 180 > rect.width) tx = mx - 190;
+  if (ty < 0) ty = 4;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  tooltip.classList.remove('visible');
+  if (snapshot) cx.putImageData(snapshot, 0, 0);
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  LEGEND
+// ─────────────────────────────────────────────────────────────────
+function updateLegend() {
+  const el = document.getElementById('legend');
+  el.innerHTML = state.selected.map((id, si) => {
+    const s = STRATEGIES[id];
+    return `<div class="legend-item"><span class="legend-line" style="background:${LINE_COLORS[si]}"></span>${s.name}</div>`;
+  }).join('') + '<div class="legend-item"><span class="legend-dot"></span>success</div>';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  STATS
+// ─────────────────────────────────────────────────────────────────
+function updateStats() {
+  if (!cache) return;
+  const grid = document.getElementById('stats-grid');
+  const colorVars = ['var(--accent-cyan)', 'var(--accent-amber)', 'var(--accent-violet)'];
+
+  grid.innerHTML = cache.map((data, si) => {
+    if (!data) return `<div class="stat-block"><div class="stat-name" style="color:var(--text-secondary)">—</div></div>`;
+
+    const total = data.delays.reduce((a, b) => a + b, 0);
+    const avg   = total / data.delays.length;
+
+    let firstSuccessMs = 0;
+    for (let i = 0; i < data.successes.length; i++) {
+      firstSuccessMs += data.delays[i];
+      if (data.successes[i]) break;
+    }
+    // If no success ever, show total
+    const noSuccess = !data.successes.some(Boolean);
+
+    return `
+      <div class="stat-block">
+        <div class="stat-name">
+          <span class="strategy-dot" style="background:${data.color}"></span>
+          ${data.strat.name}
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Total time (50 retries)</div>
+          <div class="stat-value" style="color:${colorVars[si]}">${formatMs(total)}</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Time to first success</div>
+          <div class="stat-value">${noSuccess ? '—' : formatMs(firstSuccessMs)}</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Average delay</div>
+          <div class="stat-value">${formatMs(avg)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  ANNOTATIONS
+// ─────────────────────────────────────────────────────────────────
+function updateAnnotations() {
+  const el = document.getElementById('annotations-list');
+  el.innerHTML = state.selected.map((id, si) => {
+    const s = STRATEGIES[id];
+    const infoIcon = s.approx
+      ? `<span class="info-icon" data-tip="${s.approx}">i</span>`
+      : '';
+    return `
+      <div class="annotation-item">
+        <div class="annotation-marker">
+          <span class="annotation-line" style="background:${LINE_COLORS[si]}"></span>
+        </div>
+        <p class="annotation-text">${s.desc}${infoIcon}</p>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  CONTROLS — Strategy Selectors
+// ─────────────────────────────────────────────────────────────────
+function buildSelectors() {
+  const grid = document.getElementById('selectors-grid');
+  grid.innerHTML = '';
+
+  state.selected.forEach((id, si) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'selector-wrap';
+
+    wrap.innerHTML = `
+      <div class="selector-header">
+        <span class="strategy-dot" style="background:${LINE_COLORS[si]}"></span>
+        Line ${si + 1}
+      </div>`;
+
+    const sel = document.createElement('select');
+    Object.keys(STRATEGIES).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = STRATEGIES[key].name;
+      if (key === id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    sel.addEventListener('change', () => {
+      state.selected[si] = sel.value;
+      startAnimation();
+    });
+
+    wrap.appendChild(sel);
+    grid.appendChild(wrap);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  CONTROLS — Sliders
+// ─────────────────────────────────────────────────────────────────
+function buildSliders() {
+  const grid = document.getElementById('sliders-grid');
+
+  const defs = [
+    {
+      id: 'base-delay', label: 'Base Delay',
+      min: 100, max: 5000, step: 100, value: state.baseDelay,
+      fmt: v => formatMs(v),
+      set: v => { state.baseDelay = v; }
+    },
+    {
+      id: 'max-delay', label: 'Max Delay Cap',
+      min: 5000, max: 120000, step: 1000, value: state.maxDelay,
+      fmt: v => formatMs(v),
+      set: v => { state.maxDelay = v; }
+    },
+    {
+      id: 'failure-rate', label: 'Failure Rate',
+      min: 0, max: 100, step: 5, value: state.failureRate,
+      fmt: v => `${v}%`,
+      set: v => { state.failureRate = v; }
+    },
+  ];
+
+  defs.forEach(def => {
+    const group = document.createElement('div');
+    group.className = 'control-group';
+
+    const valSpan = document.createElement('span');
+    valSpan.className = 'control-value';
+    valSpan.textContent = def.fmt(def.value);
+
+    const label = document.createElement('label');
+    label.className = 'control-label';
+    label.htmlFor = def.id;
+    label.appendChild(document.createTextNode(def.label));
+    label.appendChild(valSpan);
+
+    const input = document.createElement('input');
+    input.type  = 'range';
+    input.id    = def.id;
+    input.min   = def.min;
+    input.max   = def.max;
+    input.step  = def.step;
+    input.value = def.value;
+
+    input.addEventListener('input', () => {
+      const v = Number(input.value);
+      valSpan.textContent = def.fmt(v);
+      def.set(v);
+      startAnimation();
+    });
+
+    group.appendChild(label);
+    group.appendChild(input);
+    grid.appendChild(group);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  CONTROLS — Jitter Toggle
+// ─────────────────────────────────────────────────────────────────
+function buildJitter() {
+  document.getElementById('jitter-toggle').addEventListener('change', e => {
+    state.jitter = e.target.checked;
+    startAnimation();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  RESIZE
+// ─────────────────────────────────────────────────────────────────
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    snapshot = null;
+    drawChart(1);
+    snapshot = null; // force re-snapshot after resize
+    if (cache) {
+      setupCanvas();
+      drawChart(1);
+    }
+  }, 120);
+});
+
+// Tab visibility — pause animation when hidden
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && animRaf) {
+    // Reset animation start so it doesn't jump forward
+    animStart = null;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────────────────────────
+function init() {
+  buildSelectors();
+  buildSliders();
+  buildJitter();
+  updateLegend();
+  updateAnnotations();
+  startAnimation();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
