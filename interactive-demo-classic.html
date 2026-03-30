@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backoff Strategy Visualiser — patience</title>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --bg-inset: #F0EDE6;
+    --ink: #111111;
+    --ink-mid: #555555;
+    --ink-light: #888888;
+    --ink-ghost: rgba(17,17,17,0.18);
+    --border: #CCCCCC;
+    --border-heavy: #111111;
+    --fig-bg: #FFFFFF;
+    --font-body: 'IM Fell English', 'Times New Roman', Georgia, serif;
+    --font-mono: 'Courier Prime', 'Courier New', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.75;
+    padding: 0 16px 48px;
+  }
+
+  .page-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  /* HEADER */
+  header {
+    padding: 24px 0 20px;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 32px;
+  }
+  header .repo-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+  }
+  header .repo-name:hover { text-decoration: underline; }
+  header .desc {
+    font-style: italic;
+    color: var(--ink-mid);
+    font-size: 15px;
+    margin-top: 4px;
+  }
+  header .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+    padding: 3px 8px;
+    border: dashed 1.5px var(--ink);
+    margin-top: 8px;
+  }
+
+  /* FIGURES */
+  .figure-wrap {
+    background: var(--fig-bg);
+    border: 0.5px solid var(--border);
+    padding: 24px;
+    margin-bottom: 8px;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+  }
+  .caption {
+    font-style: italic;
+    font-size: 0.82em;
+    color: var(--ink-mid);
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  /* CONTROLS PANEL */
+  .controls-panel {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .controls-heading {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-mid);
+    margin-bottom: 16px;
+  }
+  .controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px 24px;
+  }
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-group label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-mid);
+  }
+  .control-group select {
+    font-family: var(--font-body);
+    font-size: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 3px 6px;
+  }
+  .control-group input[type="range"] {
+    width: 100%;
+  }
+  .control-group .val {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-mid);
+  }
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .control-row label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-mid);
+  }
+  .controls-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 24px;
+    margin-top: 16px;
+  }
+  .controls-row-3 {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    align-items: center;
+  }
+
+  /* STATS TABLE */
+  .stats-wrap {
+    margin-bottom: 8px;
+  }
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-body);
+    font-size: 14px;
+  }
+  .stats-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-mid);
+    border-bottom: 0.5px solid var(--border);
+    padding: 4px 12px 4px 0;
+    text-align: left;
+    font-weight: normal;
+  }
+  .stats-table th:first-child { padding-left: 0; }
+  .stats-table td {
+    border-bottom: 0.5px solid var(--border);
+    padding: 5px 12px 5px 0;
+    color: var(--ink);
+  }
+  .stats-table td:first-child { padding-left: 0; }
+  .stats-table .strategy-label {
+    font-style: italic;
+  }
+
+  /* ANNOTATION */
+  .annotation-panel {
+    border-left: 1.5px solid var(--border-heavy);
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    background: var(--bg-inset);
+  }
+  .annotation-panel p {
+    font-style: italic;
+    font-size: 0.92em;
+    color: var(--ink-mid);
+    line-height: 1.6;
+  }
+
+  hr {
+    border: none;
+    border-top: 0.5px solid var(--border);
+    margin: 32px 0;
+  }
+
+  /* FOOTER */
+  footer {
+    border-top: 0.5px solid var(--border);
+    padding: 24px 0 0;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-mid);
+  }
+  footer a { color: var(--ink-mid); }
+  footer a:hover { color: var(--ink); }
+
+  @media (max-width: 768px) {
+    .controls-grid { grid-template-columns: 1fr 1fr; }
+    .controls-row-2 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    body { font-size: 15px; }
+    .controls-grid { grid-template-columns: 1fr; }
+    .controls-row-3 { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- HEADER -->
+<header>
+  <a class="repo-name" href="https://github.com/shaneisley/patience">patience</a>
+  <div class="desc">Retry delay visualiser — backoff theory made concrete</div>
+  <span class="badge">Go</span>
+</header>
+
+<!-- FIG 1 -->
+<div class="figure-wrap">
+  <canvas id="mainCanvas" height="340"></canvas>
+</div>
+<p class="caption"><em>Fig. 1 — Delay per attempt for up to 3 simultaneous strategies. Solid: Strategy A. Dashed: Strategy B. Dotted: Strategy C. Lines animate left-to-right on change. Open circles (○) mark attempts that succeed given the failure rate; filled circles (●) show jitter scatter.</em></p>
+
+<!-- CONTROLS -->
+<div class="controls-panel">
+  <div class="controls-heading">Controls</div>
+
+  <div class="controls-grid">
+    <div class="control-group">
+      <label>Strategy A (solid)</label>
+      <select id="selA"></select>
+    </div>
+    <div class="control-group">
+      <label>Strategy B (dashed)</label>
+      <select id="selB"></select>
+    </div>
+    <div class="control-group">
+      <label>Strategy C (dotted)</label>
+      <select id="selC"></select>
+    </div>
+  </div>
+
+  <div class="controls-row-2">
+    <div class="control-group">
+      <label>Base delay — <span id="baseDelayVal">1.0 s</span></label>
+      <input type="range" id="baseDelay" min="100" max="5000" step="100" value="1000">
+    </div>
+    <div class="control-group">
+      <label>Max delay cap — <span id="maxDelayVal">30 s</span></label>
+      <input type="range" id="maxDelay" min="5000" max="120000" step="1000" value="30000">
+    </div>
+  </div>
+
+  <div class="controls-row-3">
+    <div class="control-group">
+      <label>Failure rate — <span id="failRateVal">60%</span></label>
+      <input type="range" id="failRate" min="0" max="100" step="5" value="60" style="width:160px">
+    </div>
+    <div class="control-row">
+      <input type="checkbox" id="jitterToggle">
+      <label for="jitterToggle">Jitter scatter</label>
+    </div>
+  </div>
+</div>
+
+<!-- FIG 2 -->
+<div class="figure-wrap stats-wrap">
+  <table class="stats-table" id="statsTable">
+    <thead>
+      <tr>
+        <th>Strategy</th>
+        <th>Total time (50 retries)</th>
+        <th>Time to first success</th>
+        <th>Average delay</th>
+      </tr>
+    </thead>
+    <tbody id="statsBody"></tbody>
+  </table>
+</div>
+<p class="caption"><em>Fig. 2 — Summary statistics for active strategies given current parameters. "Time to first success" uses the configured failure rate to find expected attempt number.</em></p>
+
+<!-- FIG 3 -->
+<div class="annotation-panel" id="annotationPanel">
+  <p id="annotationText"></p>
+</div>
+<p class="caption"><em>Fig. 3 — Strategy notes. Diophantine delay values are approximated as exponential backoff seeded from the rate-limit window; the actual algorithm performs constraint satisfaction over scheduled request times rather than computing a per-attempt formula.</em></p>
+
+<hr>
+
+<!-- FOOTER -->
+<footer>
+  <p>Part of <a href="https://github.com/shaneisley">Shane Isley</a>'s project portfolio. &ensp;
+  <a href="https://github.com/shaneisley/patience">github.com/shaneisley/patience</a></p>
+</footer>
+
+</div><!-- .page-wrap -->
+
+<script>
+/* =========================================================
+   STRATEGY DEFINITIONS
+   Each strategy: { name, delay(attempt, base, max) → seconds }
+   attempt is 1-based.
+   ========================================================= */
+
+const STRATEGIES = {
+  exponential: {
+    name: 'Exponential',
+    delay(n, base, max) {
+      return Math.min(base * Math.pow(2, n - 1), max);
+    },
+    note: 'Exponential backoff doubles the delay each attempt: delay = base × 2^(n−1). Best when a service is overloaded — the multiplicative retreat reduces aggregate load from competing retriers. Use when failure is caused by system saturation rather than a fixed rate limit.'
+  },
+  linear: {
+    name: 'Linear',
+    delay(n, base, max) {
+      return Math.min(base * n, max);
+    },
+    note: 'Linear backoff adds a fixed increment each attempt: delay = base × n. Appropriate when failure duration grows proportionally with load — for example, a service warming up or a queue draining at a constant rate. Growth is predictable and inspectable.'
+  },
+  fixed: {
+    name: 'Fixed',
+    delay(n, base, max) {
+      return Math.min(base, max);
+    },
+    note: 'Fixed delay waits the same duration every attempt. The right choice for transient blips — a single hiccup that resolves quickly regardless of how long you wait. Its simplicity is a feature: it makes timing behaviour trivially auditable.'
+  },
+  jitter: {
+    name: 'Jitter (full)',
+    delay(n, base, max) {
+      const exp = Math.min(base * Math.pow(2, n - 1), max);
+      return Math.random() * exp;
+    },
+    note: 'Full jitter draws the delay uniformly from [0, base × 2^(n−1)]. By randomising delay across competing retriers, it breaks the thundering-herd synchronisation that plain exponential backoff can create. Recommended by AWS for high-concurrency retry scenarios.'
+  },
+  decorrelated: {
+    name: 'Decorrelated Jitter',
+    delay: (() => {
+      let prev = 0;
+      return function(n, base, max) {
+        if (n === 1) prev = base;
+        const upper = Math.min(prev * 3, max);
+        const d = base + Math.random() * (upper - base);
+        prev = d;
+        return d;
+      };
+    })(),
+    note: 'Decorrelated jitter uses the previous delay as the upper bound: delay = random(base, prev × 3). This produces a different distribution from full jitter and tends to converge to lower average delays. The "decorrelated" name refers to breaking serial correlation between consecutive retries.'
+  },
+  fibonacci: {
+    name: 'Fibonacci',
+    delay(n, base, max) {
+      return Math.min(fib(n) * base, max);
+    },
+    note: 'Fibonacci backoff scales by the Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13… multiplied by the base delay. Growth is faster than linear but slower than exponential — useful when you want to back off meaningfully without the steep climb of doubling. A middle ground strategy.'
+  },
+  polynomial: {
+    name: 'Polynomial (²)',
+    delay(n, base, max) {
+      return Math.min(base * Math.pow(n, 2), max);
+    },
+    note: 'Polynomial backoff uses delay = base × n^exponent (here exponent = 2, quadratic). The growth curve sits between linear and exponential — aggressive enough to back off a struggling service but without the explosive climb of pure exponential. The exponent is tunable.'
+  },
+  diophantine: {
+    name: 'Diophantine †',
+    delay(n, base, max) {
+      // Approximation: exponential seeded from rate-limit window.
+      // The real implementation performs sliding-window constraint
+      // satisfaction over registered request timestamps.
+      const windowSec = max;       // reuse max as proxy for rate window
+      const approx = Math.min(base * Math.pow(1.8, n - 1), windowSec);
+      return approx;
+    },
+    note: '† Approximated. In patience, Diophantine scheduling checks whether proposed retry times satisfy ∀ sliding windows: count ≤ rateLimit. It is proactive, not reactive — delays are computed before failure by solving an inequality over existing scheduled requests. Visualised here as scaled exponential; the true shape depends on the live schedule at query time.'
+  },
+  httpaware: {
+    name: 'HTTP-Aware',
+    delay(n, base, max) {
+      // Simulates server-provided Retry-After: returns a random server hint
+      // after first failure, then falls back to exponential.
+      if (n === 1) return Math.min(base, max);
+      const serverHint = base * 2 + Math.random() * base;
+      return Math.min(serverHint, max);
+    },
+    note: 'HTTP-Aware strategy parses Retry-After headers, X-RateLimit-Reset, and JSON body fields from command output. When the server provides timing, that value overrides the fallback strategy. Visualised here with a simulated server hint on attempt 2; the fallback is exponential.'
+  },
+  adaptive: {
+    name: 'Adaptive',
+    delay: (() => {
+      let history = [];
+      return function(n, base, max) {
+        if (n === 1) { history = []; return base; }
+        // Increase delay if recent success rate is low
+        const successRate = history.length ? history.filter(Boolean).length / history.length : 0.5;
+        const factor = 1 + (1 - successRate) * 2;
+        const d = Math.min(base * factor * (n * 0.5), max);
+        history.push(Math.random() > 0.4);
+        if (history.length > 10) history.shift();
+        return d;
+      };
+    })(),
+    note: 'Adaptive strategy observes success/failure outcomes and adjusts delays based on a rolling window of recent results. When success rate is low it backs off more aggressively; when outcomes improve it reduces delays. Simulated here with a synthetic success history.'
+  },
+};
+
+/* Fibonacci helper */
+function fib(n) {
+  if (n <= 2) return 1;
+  let a = 1, b = 1;
+  for (let i = 3; i <= n; i++) { [a, b] = [b, a + b]; }
+  return b;
+}
+
+const STRATEGY_KEYS = Object.keys(STRATEGIES);
+const N_ATTEMPTS = 50;
+
+/* =========================================================
+   STATE
+   ========================================================= */
+let state = {
+  selA: 'exponential',
+  selB: 'linear',
+  selC: 'diophantine',
+  baseDelay: 1.0,   // seconds
+  maxDelay: 30.0,   // seconds
+  failRate: 0.60,
+  jitter: false,
+};
+
+/* Animation state */
+let animProgress = 0;   // 0..N_ATTEMPTS (float)
+let animFrame = null;
+let animStartTime = null;
+const ANIM_DURATION = 900; // ms
+
+/* =========================================================
+   DOM SETUP
+   ========================================================= */
+function populateSelects() {
+  ['selA','selB','selC'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    STRATEGY_KEYS.forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = STRATEGIES[k].name;
+      el.appendChild(opt);
+    });
+    el.value = state[id];
+    el.addEventListener('change', e => {
+      state[id] = e.target.value;
+      triggerAnimation();
+      updateAnnotation();
+      updateStats();
+    });
+  });
+}
+
+function setupControls() {
+  const bd = document.getElementById('baseDelay');
+  const md = document.getElementById('maxDelay');
+  const fr = document.getElementById('failRate');
+  const jt = document.getElementById('jitterToggle');
+
+  bd.addEventListener('input', () => {
+    state.baseDelay = bd.value / 1000;
+    document.getElementById('baseDelayVal').textContent = (state.baseDelay).toFixed(1) + ' s';
+    triggerAnimation(); updateStats();
+  });
+  md.addEventListener('input', () => {
+    state.maxDelay = md.value / 1000;
+    document.getElementById('maxDelayVal').textContent = state.maxDelay.toFixed(0) + ' s';
+    triggerAnimation(); updateStats();
+  });
+  fr.addEventListener('input', () => {
+    state.failRate = fr.value / 100;
+    document.getElementById('failRateVal').textContent = fr.value + '%';
+    triggerAnimation(); updateStats();
+  });
+  jt.addEventListener('change', () => {
+    state.jitter = jt.checked;
+    triggerAnimation(); updateStats();
+  });
+}
+
+/* =========================================================
+   DELAY COMPUTATION
+   ========================================================= */
+function computeDelays(key) {
+  const s = STRATEGIES[key];
+  // Reset stateful strategies by re-creating closure if needed.
+  // For decorrelated and adaptive, we reinitialise by calling with n=1 first.
+  const delays = [];
+  for (let n = 1; n <= N_ATTEMPTS; n++) {
+    delays.push(s.delay(n, state.baseDelay, state.maxDelay));
+  }
+  return delays;
+}
+
+function jitterDelays(delays) {
+  return delays.map(d => Math.max(0, d + (Math.random() - 0.5) * d * 0.35));
+}
+
+/* =========================================================
+   CANVAS DRAWING
+   ========================================================= */
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth - 48; // subtract figure padding
+  canvas.width = w * dpr;
+  canvas.height = 340 * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = '340px';
+  ctx.scale(dpr, dpr);
+  draw(animProgress);
+}
+
+function draw(progress) {
+  const W = parseInt(canvas.style.width);
+  const H = 340;
+  const PAD = { top: 24, right: 80, bottom: 44, left: 54 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
+  // Clear
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+
+  // Compute all delays (fresh each draw to handle stateful strategies)
+  const keysActive = [state.selA, state.selB, state.selC];
+  const allDelaysRaw = keysActive.map(k => computeDelays(k));
+  const allDelays = allDelaysRaw.map(d =>
+    state.jitter ? jitterDelays(d) : d
+  );
+
+  // Y scale: max across all active
+  let yMax = 0;
+  allDelays.forEach(ds => ds.forEach(d => { if (d > yMax) yMax = d; }));
+  if (yMax === 0) yMax = 1;
+  yMax = niceMax(yMax);
+
+  // Helpers
+  const xOf = n => PAD.left + ((n - 1) / (N_ATTEMPTS - 1)) * plotW;
+  const yOf = d => PAD.top + plotH - (d / yMax) * plotH;
+
+  // ---- AXES ----
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  // Y axis
+  ctx.moveTo(PAD.left, PAD.top);
+  ctx.lineTo(PAD.left, PAD.top + plotH);
+  // X axis
+  ctx.lineTo(PAD.left + plotW, PAD.top + plotH);
+  ctx.stroke();
+
+  // Arrow tips
+  drawArrow(ctx, PAD.left, PAD.top + plotH, PAD.left, PAD.top - 6);    // up
+  drawArrow(ctx, PAD.left, PAD.top + plotH, PAD.left + plotW + 6, PAD.top + plotH); // right
+
+  // X ticks
+  const xTicks = [1, 10, 20, 30, 40, 50];
+  ctx.lineWidth = 0.8;
+  ctx.fillStyle = '#111111';
+  ctx.font = '11px Courier Prime, Courier New, monospace';
+  ctx.textAlign = 'center';
+  xTicks.forEach(n => {
+    const x = xOf(n);
+    ctx.beginPath();
+    ctx.moveTo(x, PAD.top + plotH);
+    ctx.lineTo(x, PAD.top + plotH + 5);
+    ctx.stroke();
+    ctx.fillText(n, x, PAD.top + plotH + 17);
+  });
+
+  // Y ticks
+  const yTickVals = niceYTicks(yMax, 5);
+  ctx.textAlign = 'right';
+  yTickVals.forEach(v => {
+    const y = yOf(v);
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.moveTo(PAD.left - 5, y);
+    ctx.lineTo(PAD.left, y);
+    ctx.stroke();
+    ctx.fillText(v < 1 ? v.toFixed(2) : v.toFixed(0), PAD.left - 8, y + 4);
+  });
+
+  // Axis labels
+  ctx.save();
+  ctx.font = 'italic 13px "IM Fell English", Times New Roman, serif';
+  ctx.fillStyle = '#555555';
+  ctx.textAlign = 'center';
+  // X label
+  ctx.fillText('attempt', PAD.left + plotW / 2, H - 4);
+  // Y label
+  ctx.translate(14, PAD.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('delay (s)', 0, 0);
+  ctx.restore();
+
+  // ---- DRAW STRATEGIES ----
+  const lineStyles = [
+    { dash: [],    width: 1.5 },  // A: solid
+    { dash: [6,3], width: 1.2 },  // B: dashed
+    { dash: [2,2], width: 1.2 },  // C: dotted
+  ];
+
+  const nDraw = Math.round(Math.max(1, Math.min(progress, N_ATTEMPTS)));
+
+  keysActive.forEach((key, si) => {
+    const delays = allDelays[si];
+    const raw = allDelaysRaw[si];
+    const ls = lineStyles[si];
+    const stratName = STRATEGIES[key].name;
+
+    ctx.save();
+    ctx.strokeStyle = '#111111';
+    ctx.lineWidth = ls.width;
+    ctx.setLineDash(ls.dash);
+
+    // Main curve
+    ctx.beginPath();
+    for (let n = 1; n <= nDraw; n++) {
+      const x = xOf(n);
+      const y = yOf(delays[n - 1]);
+      if (n === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Jitter construction lines + filled dots
+    if (state.jitter && nDraw > 0) {
+      ctx.setLineDash([]);
+      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = '#888888';
+      for (let n = 1; n <= nDraw; n++) {
+        const x = xOf(n);
+        const yRaw = yOf(raw[n - 1]);
+        const yJit = yOf(delays[n - 1]);
+        // Construction line
+        ctx.beginPath();
+        ctx.moveTo(x, yRaw);
+        ctx.lineTo(x, yJit);
+        ctx.stroke();
+        // Filled dot at jittered position
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(x, yJit, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Success markers (open circles ○)
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#111111';
+    ctx.lineWidth = 1.0;
+    for (let n = 1; n <= nDraw; n++) {
+      const isSuccess = Math.random() > state.failRate;
+      if (isSuccess) {
+        const x = xOf(n);
+        const y = yOf(delays[n - 1]);
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Inline label at end of line
+    if (nDraw >= 2) {
+      const labelN = Math.min(nDraw, N_ATTEMPTS);
+      const x = xOf(labelN) + 6;
+      const y = yOf(delays[labelN - 1]);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#111111';
+      ctx.font = 'italic 12px "IM Fell English", Times New Roman, serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(stratName, x, y + 4);
+    }
+
+    ctx.restore();
+  });
+}
+
+function drawArrow(ctx, x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const ux = dx / len, uy = dy / len;
+  const sz = 6;
+  ctx.save();
+  ctx.fillStyle = '#111111';
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - sz * ux + sz * 0.4 * uy, y1 - sz * uy - sz * 0.4 * ux);
+  ctx.lineTo(x1 - sz * ux - sz * 0.4 * uy, y1 - sz * uy + sz * 0.4 * ux);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const frac = v / exp;
+  if (frac <= 1) return exp;
+  if (frac <= 2) return 2 * exp;
+  if (frac <= 5) return 5 * exp;
+  return 10 * exp;
+}
+
+function niceYTicks(max, n) {
+  const step = niceMax(max / n);
+  const ticks = [];
+  for (let v = 0; v <= max; v += step) {
+    ticks.push(parseFloat(v.toFixed(4)));
+  }
+  return ticks;
+}
+
+/* =========================================================
+   ANIMATION
+   ========================================================= */
+function triggerAnimation() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animProgress = 0;
+  animStartTime = null;
+  animFrame = requestAnimationFrame(animTick);
+}
+
+function animTick(ts) {
+  if (document.hidden) { animFrame = requestAnimationFrame(animTick); return; }
+  if (!animStartTime) animStartTime = ts;
+  const elapsed = ts - animStartTime;
+  animProgress = Math.min((elapsed / ANIM_DURATION) * N_ATTEMPTS, N_ATTEMPTS);
+  draw(animProgress);
+  if (animProgress < N_ATTEMPTS) {
+    animFrame = requestAnimationFrame(animTick);
+  } else {
+    animProgress = N_ATTEMPTS;
+    draw(N_ATTEMPTS);
+    animFrame = null;
+  }
+}
+
+/* =========================================================
+   STATS TABLE
+   ========================================================= */
+function updateStats() {
+  const keys = [state.selA, state.selB, state.selC];
+  const tbody = document.getElementById('statsBody');
+  tbody.innerHTML = '';
+
+  keys.forEach(key => {
+    const delays = computeDelays(key);
+    const total = delays.reduce((a, b) => a + b, 0);
+    const avg = total / delays.length;
+
+    // Expected first success attempt: geometric distribution
+    // P(success on attempt n) = failRate^(n-1) * (1-failRate)
+    let timeToFirst = 0;
+    let cumTime = 0;
+    const p = 1 - state.failRate;
+    for (let n = 1; n <= N_ATTEMPTS; n++) {
+      const probSuccessHere = Math.pow(state.failRate, n - 1) * p;
+      cumTime += delays[n - 1];
+      timeToFirst += probSuccessHere * cumTime;
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="strategy-label">${STRATEGIES[key].name}</td>
+      <td>${fmtSec(total)}</td>
+      <td>${state.failRate >= 1 ? '—' : fmtSec(timeToFirst)}</td>
+      <td>${fmtSec(avg)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function fmtSec(s) {
+  if (s >= 3600) return (s / 3600).toFixed(1) + ' h';
+  if (s >= 60)   return (s / 60).toFixed(1) + ' min';
+  return s.toFixed(1) + ' s';
+}
+
+/* =========================================================
+   ANNOTATION
+   ========================================================= */
+function updateAnnotation() {
+  const notes = [state.selA, state.selB, state.selC]
+    .map(k => `<strong>${STRATEGIES[k].name}:</strong> ${STRATEGIES[k].note}`)
+    .join('<br><br>');
+  document.getElementById('annotationText').innerHTML = notes;
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+window.addEventListener('resize', () => {
+  resizeCanvas();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  populateSelects();
+  setupControls();
+  resizeCanvas();
+  updateAnnotation();
+  updateStats();
+  triggerAnimation();
+});
+</script>
+</body>
+</html>
