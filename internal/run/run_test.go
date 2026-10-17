@@ -199,12 +199,11 @@ func TestTimeoutKillsProcessTree(t *testing.T) {
 }
 
 func TestTimeoutEscalatesToKill(t *testing.T) {
-	// A child ignoring SIGTERM must be SIGKILLed after killGrace.
-	old := killGrace
-	killGrace = 200 * time.Millisecond
-	defer func() { killGrace = old }()
+	// A child ignoring SIGTERM must be SIGKILLed after KillGrace.
 	start := time.Now()
-	r := runQuiet(t, sh("trap '' TERM; sleep 30"), Options{Attempts: 1, Timeout: 50 * time.Millisecond})
+	r := runQuiet(t, sh("trap '' TERM; sleep 30"), Options{
+		Attempts: 1, Timeout: 50 * time.Millisecond, KillGrace: 200 * time.Millisecond,
+	})
 	assert.Equal(t, ExitTimeout, r.ExitCode)
 	assert.Less(t, time.Since(start), 2*time.Second)
 }

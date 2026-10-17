@@ -28,16 +28,16 @@ const (
 	ExitPatternErr = 1
 )
 
-// killGrace is how long a timed-out attempt gets after SIGTERM before SIGKILL.
-// A variable so tests can shorten it.
-var killGrace = 2 * time.Second
+// defaultKillGrace is how long a timed-out attempt gets after SIGTERM before SIGKILL.
+const defaultKillGrace = 2 * time.Second
 
 // Options controls a Run.
 type Options struct {
-	Attempts int           // total attempts; 0 = unlimited
-	Timeout  time.Duration // per attempt; 0 = none
-	MaxTime  time.Duration // overall budget including delays; 0 = none
-	RetryOn  []int         // retry only on these exit codes; nil = any non-zero
+	Attempts  int           // total attempts; 0 = unlimited
+	Timeout   time.Duration // per attempt; 0 = none
+	KillGrace time.Duration // after a timeout's SIGTERM, how long before SIGKILL; 0 = 2s
+	MaxTime   time.Duration // overall budget including delays; 0 = none
+	RetryOn   []int         // retry only on these exit codes; nil = any non-zero
 
 	Success *regexp.Regexp // output matching this makes the attempt succeed
 	Failure *regexp.Regexp // output matching this makes the attempt fail (wins over Success)
@@ -145,6 +145,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Sleep == nil {
 		o.Sleep = sleepCtx
+	}
+	if o.KillGrace <= 0 {
+		o.KillGrace = defaultKillGrace
 	}
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
@@ -286,6 +289,10 @@ func (o Options) supervise(ctx context.Context, c *exec.Cmd, sigs <-chan os.Sign
 		timer = tm.C
 	}
 
+	// grace fires KillGrace after SIGTERM; it is armed only on timeout and
+	// dies with this function, so a command that exits in time is never
+	// followed by a SIGKILL to a process group that may since have been reused.
+	var grace <-chan time.Time
 	var s supervision
 	signalled := 0
 	for {
@@ -296,10 +303,12 @@ func (o Options) supervise(ctx context.Context, c *exec.Cmd, sigs <-chan os.Sign
 			s.timedOut = true
 			timer = nil
 			kill(syscall.SIGTERM)
-			go func() {
-				time.Sleep(killGrace)
-				kill(syscall.SIGKILL)
-			}()
+			gt := time.NewTimer(o.KillGrace)
+			defer gt.Stop()
+			grace = gt.C
+		case <-grace:
+			grace = nil
+			kill(syscall.SIGKILL)
 		case sig := <-sigs:
 			s.interrupted = sig
 			signalled++

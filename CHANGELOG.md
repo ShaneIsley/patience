@@ -34,3 +34,5 @@ measured defects that drove it.
 - Exit codes: 124 on timeout, 126/127 for exec failures (no retry), 2 for usage errors.
 - Environment variables apply to every option.
 - Delays can no longer overflow to negative or zero values.
+- After a timeout, the SIGKILL that follows SIGTERM is cancelled once the command exits, so
+  it can no longer be sent to a process group that was reused in the meantime.
