@@ -1,44 +1,24 @@
-# Makefile for the patience project
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS  = -s -w -X main.version=$(VERSION)
 
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOTEST=$(GOCMD) test
-GOCLEAN=$(GOCMD) clean
-GOINSTALL=$(GOCMD) install
-GOTOOL=$(GOCMD) tool
+.PHONY: build test race lint doctest clean
 
-# Binaries
-BINARY_NAME_PATIENCE=patience
-BINARY_NAME_PATIENCED=patienced
-
-all: build
-
-## Build
 build:
-	@echo "Building binaries..."
-	$(GOBUILD) -o $(BINARY_NAME_PATIENCE) ./cmd/patience
-	$(GOBUILD) -o $(BINARY_NAME_PATIENCED) ./cmd/patienced
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o patience ./cmd/patience
 
-## Test
 test:
-	@echo "Running tests..."
-	$(GOTEST) -v ./...
+	go test ./...
 
-## Benchmark
-benchmark:
-	@echo "Running benchmarks..."
-	cd benchmarks && $(GOTEST) -bench=.
+race:
+	go test -race -count=3 ./...
 
-## Install
-install:
-	@echo "Installing binaries..."
-	./scripts/install.sh
+lint:
+	test -z "$$(gofmt -l .)"
+	go vet ./...
+	go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
 
-## Clean
+doctest:
+	go test -run TestReadme -count=1 ./cmd/patience
+
 clean:
-	@echo "Cleaning up..."
-	rm -f $(BINARY_NAME_PATIENCE) $(BINARY_NAME_PATIENCED)
-	$(GOCLEAN)
-
-.PHONY: all build test benchmark install clean
+	rm -f patience

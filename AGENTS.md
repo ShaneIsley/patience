@@ -1,49 +1,13 @@
 # AGENTS.md
 
-This file provides development guidelines for AI agents working in this repository.
+Guidance for AI agents working in this repository. Read `CONTRIBUTING.md` first; it is short.
 
-For detailed development guidelines, see [Development-Guidelines.md](Development-Guidelines.md).
-
-## Build, Lint, and Test
-
-- **Build:** `make build` or `go build -o patience ./cmd/patience`
-- **Test:** `make test` or `go test ./...`
-- **Run a single test:** `go test -v -run ^TestMyFunction$ ./path/to/package`
-- **Test with race detection:** `go test -race ./...`
-- **Lint:** `golangci-lint run --config=.golangci.yml`
-- **Format:** `gofmt -w .` and `goimports -w .` (or run `pre-commit run --all-files`)
-
-## CLI Architecture
-
-The CLI uses a strategy-based subcommand architecture:
-
-```bash
-patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]
-```
-
-Available strategies (with aliases): `http-aware` (`ha`), `exponential` (`exp`), `linear` (`lin`), `fixed` (`fix`), `jitter` (`jit`), `decorrelated-jitter` (`dj`), `fibonacci` (`fib`), `polynomial` (`poly`), `adaptive` (`adapt`), `diophantine` (`dio`).
-
-## Code Style and Conventions
-
-- **Imports:** Use `goimports` for formatting. No blank or dot imports.
-- **Formatting:** Adhere to `gofmt` standards. Max line length is 120 characters.
-- **Types:** Avoid `interface{}` where possible. Use specific types.
-- **Naming:** Follow standard Go conventions (e.g., `camelCase` for private, `PascalCase` for public). Receivers should be named consistently. Error variables should be prefixed with `err`.
-- **Error Handling:** Check all errors. Use `errors.As` and `errors.Is` for specific error types.
-- **Complexity:** Keep functions under 120 lines and cyclomatic complexity below 15.
-- **Constants:** Avoid magic numbers; define them as constants in `pkg/executor/constants.go`.
-- **Concurrency:** Use `sync.Mutex` or `sync.RWMutex` to protect shared resources.
-- **Pre-commit:** This project uses pre-commit hooks. Install with `pre-commit install`.
-
-## Project Structure
-
-- `/cmd/patience` - Main CLI with Cobra subcommand architecture
-- `/cmd/patienced` - Optional metrics daemon
-- `/pkg/backoff` - All backoff strategies (implement `backoff.Strategy` interface)
-- `/pkg/executor` - Core retry logic and command execution
-- `/pkg/config` - Configuration loading and validation
-- `/pkg/conditions` - Pattern matching for success/failure detection
-- `/pkg/metrics` - Metrics collection and daemon communication
-- `/pkg/ui` - Terminal output and status reporting
-- `/pkg/daemon` - Daemon server implementation
-- `/pkg/storage` - In-memory metrics storage
+- Build: `make build` (static, `CGO_ENABLED=0`). Test: `make test`; one test: `go test -run '^TestName$' ./internal/run`.
+- Lint: `make lint`. Docs check: `make doctest` executes the README's `sh` blocks.
+- The CLI is a single command: `patience [flags] -- COMMAND`. There are no subcommands, no config
+  file, no daemon. Do not reintroduce them; `PLAN.md` explains why they were removed.
+- Keep `internal/backoff` pure (no clock, no I/O). Keep process handling in `internal/run` only.
+- Tests: no network, no fixed `/tmp` paths, no building into the source tree, generous timing bounds.
+- Match the existing style: `gofmt`, short doc comments on exported names, errors wrapped with
+  context, no `interface{}`.
+- Update `CHANGELOG.md` and the README (with an executable example) for any user-visible change.

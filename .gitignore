@@ -1,83 +1,14 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Build artifacts
-/bin/
+# Build output (anchored: the directories cmd/patience and cmd/patienced must not be ignored)
+/patience
 /dist/
-/build/
 
-# Temporary files
-*.tmp
-*.temp
+# Go
+*.test
+*.out
+coverage.*
 
-# Log files
-*.log
-
-# Coverage reports
-coverage.txt
-coverage.html
-coverage.out
-
-# Local configuration files
-.env
-.env.local
-config.local.*
-
-# Project binaries
-patience
-patienced
-
-# Daemon and runtime files
-*.sock
-*.pid
-/tmp/
-code-quality-report-*.md
-
-/var/
-
-# Test artifacts
-test-*
-*_test_*
-
-# Daemon logs
-daemon.log
-daemon.error.log
-
-# Development artifacts
-TDD-Implementation-Plan.md
-*-Implementation-Plan.mdperformance_results/*.txt
-tmp/
-code-quality-report-*.md
-
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

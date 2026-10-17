@@ -1,11 +1,12 @@
 package main
 
 import (
-	"fmt"
-	"net"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,642 +14,208 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// buildBinary builds the retry binary for testing
-func buildBinary(t *testing.T) string {
+// bin is built once per test binary into a temp dir (never into the tree).
+var bin string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "patience-test-")
+	if err != nil {
+		panic(err)
+	}
+	bin = filepath.Join(dir, "patience")
+	args := []string{"build", "-ldflags", "-X main.version=test", "-o", bin}
+	if os.Getenv("GOCOVERDIR") != "" {
+		args = append(args, "-cover") // the binary then writes coverage for every run
+	}
+	build := exec.Command("go", append(args, ".")...)
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		panic(string(out))
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+type result struct {
+	code           int
+	stdout, stderr string
+	wall           time.Duration
+}
+
+func patience(t *testing.T, stdin string, env []string, args ...string) result {
 	t.Helper()
-
-	// Build the binary
-	cmd := exec.Command("go", "build", "-o", "retry-test", ".")
-	cmd.Dir = "."
-	err := cmd.Run()
-	require.NoError(t, err, "Failed to build retry binary")
-
-	// Clean up binary after test
-	t.Cleanup(func() {
-		os.Remove("retry-test")
-	})
-
-	return "./retry-test"
-}
-
-func TestCLI_RunSimpleSuccessCommand(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing: patience exponential -- true
-	cmd := exec.Command(binary, "exponential", "--", "true")
-	err := cmd.Run()
-
-	// Then the CLI should exit with code 0
-	require.NoError(t, err)
-
-	// And the exit code should be 0 (success)
-	assert.Equal(t, 0, cmd.ProcessState.ExitCode())
-}
-
-func TestCLI_RunSimpleFailCommand(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing: patience exponential --attempts 2 -- false
-	cmd := exec.Command(binary, "exponential", "--attempts", "2", "--", "false")
-	err := cmd.Run()
-
-	// Then the CLI should exit with a non-zero code
-	require.Error(t, err)
-
-	// And the exit code should be 1 (failure)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exitError.ExitCode())
-	} else {
-		t.Fatalf("Expected ExitError, got %T", err)
-	}
-}
-
-func TestCLI_WithDelayFlag(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with delay flag: patience fixed --attempts 2 --delay 10ms -- false
-	cmd := exec.Command(binary, "fixed", "--attempts", "2", "--delay", "10ms", "--", "false")
-	err := cmd.Run()
-
-	// Then it should still fail but take some time due to delay
-	require.Error(t, err)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exitError.ExitCode())
-	}
-}
-
-func TestCLI_WithTimeoutFlag(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with timeout: patience exponential --timeout 50ms -- sleep 0.2
-	cmd := exec.Command(binary, "exponential", "--timeout", "50ms", "--", "sleep", "0.2")
-	err := cmd.Run()
-
-	// Then it should fail due to timeout
-	require.Error(t, err)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		// Should exit with 255 (timeout exit code, -1 becomes 255)
-		assert.Equal(t, 255, exitError.ExitCode())
-	}
-}
-
-func TestCLI_HelpFlag(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with --help
-	cmd := exec.Command(binary, "--help")
-	output, err := cmd.Output()
-
-	// Then it should succeed and show help
-	require.NoError(t, err)
-	assert.Contains(t, string(output), "patience is a CLI tool")
-	assert.Contains(t, string(output), "exponential")
-	assert.Contains(t, string(output), "http-aware")
-	assert.Contains(t, string(output), "Available Commands")
-}
-
-func TestCLI_InvalidCommand(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing without command arguments
-	cmd := exec.Command(binary)
-	err := cmd.Run()
-
-	// Then it should succeed and show help (root command shows help by default)
-	require.NoError(t, err)
-}
-
-func TestCLI_ExponentialBackoff(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with exponential backoff
-	cmd := exec.Command(binary, "exponential", "--attempts", "2", "--base-delay", "50ms", "--", "false")
-	err := cmd.Run()
-
-	// Then it should still fail but use exponential delays
-	require.Error(t, err)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exitError.ExitCode())
-	}
-}
-
-func TestCLI_ExponentialBackoffWithMaxDelay(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with exponential backoff and max delay
-	cmd := exec.Command(binary, "exponential",
-		"--attempts", "3",
-		"--base-delay", "100ms",
-		"--max-delay", "150ms",
-		"--multiplier", "2.0",
-		"--", "false")
-	err := cmd.Run()
-
-	// Then it should fail with capped delays
-	require.Error(t, err)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exitError.ExitCode())
-	}
-}
-
-func TestCLI_SuccessPattern(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with success pattern that matches
-	cmd := exec.Command(binary, "exponential",
-		"--success-pattern", "success",
-		"--", "sh", "-c", "echo 'deployment success'; exit 1")
-	err := cmd.Run()
-
-	// Then it should succeed despite exit code 1
-	require.NoError(t, err)
-}
-
-func TestCLI_FailurePattern(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with failure pattern that matches
-	cmd := exec.Command(binary, "exponential",
-		"--failure-pattern", "(?i)error",
-		"--", "sh", "-c", "echo 'Error occurred'; exit 0")
-	err := cmd.Run()
-
-	// Then it should fail despite exit code 0
-	require.Error(t, err)
-	if exitError, ok := err.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exitError.ExitCode()) // Pattern match failure uses exit code 1
-	}
-}
-
-func TestCLI_CaseInsensitivePattern(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with case-insensitive success pattern
-	cmd := exec.Command(binary, "exponential",
-		"--success-pattern", "SUCCESS",
-		"--case-insensitive",
-		"--", "sh", "-c", "echo 'deployment success'; exit 1")
-	err := cmd.Run()
-
-	// Then it should succeed with case-insensitive matching
-	require.NoError(t, err)
-}
-
-func TestCLI_ConfigFile(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// And a configuration file
-	configContent := `
-attempts = 5
-base_delay = "100ms"
-success_pattern = "success"
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// When executing with config file using exponential strategy
-	cmd := exec.Command(binary, "exponential",
-		"--config", configFile,
-		"--", "sh", "-c", "echo 'deployment success'; exit 1")
-	err = cmd.Run()
-
-	// Then it should succeed using config file settings
-	require.NoError(t, err)
-}
-
-func TestCLI_ConfigFileWithFlagOverride(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// And a configuration file with success pattern
-	configContent := `
-attempts = 2
-success_pattern = "success"
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// When executing with config file but overriding attempts via flag
-	cmd := exec.Command(binary, "exponential",
-		"--config", configFile,
-		"--attempts", "1", // Override config file value
-		"--", "sh", "-c", "echo 'deployment success'; exit 1")
-	err = cmd.Run()
-
-	// Then it should succeed using flag override (1 attempt is enough due to success pattern)
-	require.NoError(t, err)
-}
-
-func TestCLI_AutoDiscoverConfigFile(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// And a configuration file in current directory
-	configContent := `
-attempts = 1
-success_pattern = "success"
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, ".patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// Get absolute path to binary
-	absBinary, err := filepath.Abs(binary)
-	require.NoError(t, err)
-
-	// When executing from the directory with config file (no --config flag)
-	cmd := exec.Command(absBinary, "exponential", "--", "sh", "-c", "echo 'deployment success'; exit 1")
-	cmd.Dir = tmpDir // Run from the temp directory
-	err = cmd.Run()
-
-	// Then it should succeed using auto-discovered config file
-	require.NoError(t, err)
-}
-
-func TestCLI_InvalidConfigFile(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// And an invalid configuration file
-	configContent := `
-attempts = "invalid"
-[broken toml
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// When executing with invalid config file
-	cmd := exec.Command(binary, "exponential",
-		"--config", configFile,
-		"--", "true")
-	err = cmd.Run()
-
-	// Then it should fail with config error
-	require.Error(t, err)
-}
-
-func TestCLI_StatusOutput_Success(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a successful command
-	cmd := exec.Command(binary, "exponential", "--", "echo", "success")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should succeed
-	require.NoError(t, err)
-
-	// And show status messages
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "[retry] Attempt 1/3 starting...")
-	assert.Contains(t, outputStr, "✅ [retry] Command succeeded after 1 attempt.")
-	assert.Contains(t, outputStr, "Run Statistics:")
-	assert.Contains(t, outputStr, "Total Attempts: 1")
-	assert.Contains(t, outputStr, "Successful Runs: 1")
-	assert.Contains(t, outputStr, "Failed Runs: 0")
-	assert.Contains(t, outputStr, "Final Reason: exit code 0")
-}
-
-func TestCLI_StatusOutput_Failure(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a failing command
-	cmd := exec.Command(binary, "exponential", "--attempts", "2", "--", "false")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should fail
-	require.Error(t, err)
-
-	// And show status messages
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "[retry] Attempt 1/2 starting...")
-	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed (exit code 1). Retrying in")
-	assert.Contains(t, outputStr, "[retry] Attempt 2/2 starting...")
-	assert.Contains(t, outputStr, "[retry] Attempt 2/2 failed (exit code 1).")
-	assert.Contains(t, outputStr, "❌ [retry] Command failed after 2 attempts.")
-	assert.Contains(t, outputStr, "Run Statistics:")
-	assert.Contains(t, outputStr, "Total Attempts: 2")
-	assert.Contains(t, outputStr, "Successful Runs: 0")
-	assert.Contains(t, outputStr, "Failed Runs: 2")
-	assert.Contains(t, outputStr, "Final Reason: max retries reached (exit code 1)")
-}
-
-func TestCLI_StatusOutput_WithDelay(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with delay
-	cmd := exec.Command(binary, "fixed", "--attempts", "2", "--delay", "100ms", "--", "false")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should fail
-	require.Error(t, err)
-
-	// And show delay in status messages
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed (exit code 1). Retrying in 0.1s.")
-}
-
-func TestCLI_MetricsIntegration_DaemonNotRunning(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a command (daemon not running)
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "GOCOVERDIR=" + os.Getenv("GOCOVERDIR")}, env...)
+	var out, errb strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
 	start := time.Now()
-	cmd := exec.Command(binary, "exponential", "--attempts", "2", "--", "echo", "metrics test")
 	err := cmd.Run()
-	elapsed := time.Since(start)
-
-	// Then it should succeed normally
-	require.NoError(t, err)
-
-	// And should not be significantly delayed by metrics dispatch
-	assert.Less(t, elapsed, 2*time.Second) // Should complete quickly even with async metrics
-}
-
-func TestCLI_MetricsIntegration_WithMockDaemon(t *testing.T) {
-	// Given a mock daemon listening on Unix socket
-	socketPath := "/tmp/test-cli-metrics-" + fmt.Sprintf("%d", time.Now().UnixNano()) + ".sock"
-
-	// Clean up socket file after test
-	defer func() {
-		os.Remove(socketPath)
-	}()
-
-	listener, err := net.Listen("unix", socketPath)
-	require.NoError(t, err)
-	defer listener.Close()
-
-	// Channel to receive metrics data
-	received := make(chan []byte, 1)
-
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		if err != nil {
-			return
-		}
-		received <- buf[:n]
-	}()
-
-	// And a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a command
-	cmd := exec.Command(binary, "exponential", "--attempts", "2", "--", "echo", "daemon test")
-
-	// Override the default socket path by setting environment or using a custom build
-	// For this test, we'll just verify the CLI works normally
-	err = cmd.Run()
-
-	// Then it should succeed
-	require.NoError(t, err)
-
-	// Note: Since we can't easily override the socket path in the CLI without
-	// adding a flag, this test mainly verifies that metrics integration doesn't
-	// break normal CLI operation. The actual metrics sending is tested in the
-	// metrics package unit tests.
-}
-
-func TestCLI_MetricsIntegration_Performance(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing multiple commands in sequence
-	start := time.Now()
-	for i := 0; i < 5; i++ {
-		cmd := exec.Command(binary, "exponential", "--", "echo", fmt.Sprintf("test %d", i))
-		err := cmd.Run()
-		require.NoError(t, err)
+	code := 0
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run: %v", err)
 	}
-	elapsed := time.Since(start)
-
-	// Then the total time should not be significantly impacted by metrics
-	// (async dispatch should not block CLI execution)
-	assert.Less(t, elapsed, 3*time.Second) // Should complete quickly
+	return result{code, out.String(), errb.String(), time.Since(start)}
 }
 
-func TestCLI_EnvironmentVariables(t *testing.T) {
-	// Save original environment
-	originalEnv := make(map[string]string)
-	envVars := []string{
-		"PATIENCE_ATTEMPTS", "PATIENCE_BASE_DELAY", "PATIENCE_TIMEOUT",
+func TestVersionAndHelp(t *testing.T) {
+	r := patience(t, "", nil, "--version")
+	assert.Equal(t, 0, r.code)
+	assert.Equal(t, "patience test\n", r.stdout)
+
+	r = patience(t, "", nil, "--help")
+	assert.Equal(t, 0, r.code)
+	assert.Contains(t, r.stdout, "Usage: patience [flags] -- COMMAND")
+	assert.Contains(t, r.stdout, "--retry-on")
+	assert.Empty(t, r.stderr)
+}
+
+func TestUsageErrors(t *testing.T) {
+	cases := [][]string{
+		{},                                  // no command
+		{"--", ""},                          // empty command
+		{"--bogus", "--", "true"},           // unknown flag
+		{"-n", "-1", "--", "true"},          // negative attempts
+		{"-d", "-1s", "--", "true"},         // negative delay
+		{"-d", "5", "--", "true"},           // missing unit
+		{"-x", "0", "--", "true"},           // zero multiplier
+		{"-x", "nan", "--", "true"},         // NaN
+		{"-j", "1.5", "--", "true"},         // jitter out of range
+		{"-b", "fibonacci", "--", "true"},   // removed schedule
+		{"--retry-on", "1,x", "--", "true"}, // bad code list
+		{"--retry-on", "300", "--", "true"}, // out of range
+		{"--success-pattern", "([", "--", "true"},
+		{"-t", "-1s", "--", "true"},
+		{"--max-time", "-1s", "--", "true"},
 	}
-
-	for _, envVar := range envVars {
-		originalEnv[envVar] = os.Getenv(envVar)
-		os.Unsetenv(envVar)
+	for _, args := range cases {
+		r := patience(t, "", nil, args...)
+		assert.Equal(t, 2, r.code, "args %q: stderr %q", args, r.stderr)
+		assert.Contains(t, r.stderr, "patience:", "args %q", args)
+		assert.Empty(t, r.stdout, "usage errors must not touch stdout")
 	}
+}
 
-	// Restore environment after test
-	defer func() {
-		for _, envVar := range envVars {
-			if value, exists := originalEnv[envVar]; exists && value != "" {
-				os.Setenv(envVar, value)
-			} else {
-				os.Unsetenv(envVar)
-			}
+func TestPassthrough(t *testing.T) {
+	r := patience(t, "x\ny\nz\n", nil, "-n", "1", "--", "sh", "-c", "wc -l; echo err >&2; exit 0")
+	assert.Equal(t, 0, r.code)
+	assert.Equal(t, "3", strings.TrimSpace(r.stdout))
+	assert.Equal(t, "err\n", r.stderr, "first-try success is silent on stderr")
+}
+
+func TestExitCodes(t *testing.T) {
+	r := patience(t, "", nil, "-n", "2", "-d", "0", "--", "sh", "-c", "exit 42")
+	assert.Equal(t, 42, r.code)
+	assert.Contains(t, r.stderr, "attempt 1 failed (exit code 42); retrying in 0s")
+	assert.Contains(t, r.stderr, "giving up: all 2 attempts failed")
+
+	r = patience(t, "", nil, "-n", "1", "-t", "100ms", "--", "sleep", "5")
+	assert.Equal(t, 124, r.code)
+
+	r = patience(t, "", nil, "--", "/no/such/cmd")
+	assert.Equal(t, 127, r.code)
+	assert.NotContains(t, r.stderr, "retrying")
+
+	r = patience(t, "", nil, "-n", "3", "-d", "0", "--failure-pattern", "bad", "--", "sh", "-c", "echo bad")
+	assert.Equal(t, 1, r.code)
+}
+
+func TestDelaysAreApplied(t *testing.T) {
+	r := patience(t, "", nil, "-n", "4", "-b", "linear", "-d", "50ms", "--", "false")
+	assert.Equal(t, 1, r.code)
+	// 50 + 100 + 150 = 300ms of delay.
+	assert.GreaterOrEqual(t, r.wall, 300*time.Millisecond)
+	assert.Less(t, r.wall, 2*time.Second)
+	assert.Contains(t, r.stderr, "retrying in 50ms")
+	assert.Contains(t, r.stderr, "retrying in 100ms")
+	assert.Contains(t, r.stderr, "retrying in 150ms")
+}
+
+func TestEnvDefaultsAndPrecedence(t *testing.T) {
+	env := []string{"PATIENCE_ATTEMPTS=2", "PATIENCE_DELAY=0", "PATIENCE_BACKOFF=constant", "PATIENCE_QUIET=true"}
+	r := patience(t, "", env, "--", "false")
+	assert.Equal(t, 1, r.code)
+	assert.Empty(t, r.stderr, "PATIENCE_QUIET should silence progress")
+
+	// Flag beats env.
+	r = patience(t, "", env, "-n", "3", "-v", "--", "false")
+	assert.Equal(t, 3, strings.Count(r.stderr, "starting"))
+
+	// Malformed env is a usage error, not silently ignored.
+	r = patience(t, "", []string{"PATIENCE_ATTEMPTS=lots"}, "--", "true")
+	assert.Equal(t, 2, r.code)
+	assert.Contains(t, r.stderr, "PATIENCE_ATTEMPTS")
+}
+
+func TestQuietAndVerbose(t *testing.T) {
+	r := patience(t, "", nil, "-q", "-n", "2", "-d", "0", "--", "false")
+	assert.Empty(t, r.stderr)
+	r = patience(t, "", nil, "-v", "-n", "1", "--", "true")
+	assert.Contains(t, r.stderr, "attempt 1/1 starting")
+	assert.Contains(t, r.stderr, "1 attempt(s) in")
+}
+
+func TestRetryOnFlag(t *testing.T) {
+	r := patience(t, "", nil, "-n", "5", "-d", "0", "--retry-on", "1,75", "--", "sh", "-c", "exit 3")
+	assert.Equal(t, 3, r.code)
+	assert.Contains(t, r.stderr, "not in --retry-on")
+	assert.NotContains(t, r.stderr, "retrying")
+}
+
+func TestIgnoreCase(t *testing.T) {
+	r := patience(t, "", nil, "-n", "1", "-i", "--success-pattern", "DONE", "--", "sh", "-c", "echo done; exit 1")
+	assert.Equal(t, 0, r.code)
+}
+
+func TestCommandFlagsNotParsed(t *testing.T) {
+	// Flags after -- belong to the command.
+	r := patience(t, "", nil, "--", "sh", "-c", "echo --version -n")
+	assert.Equal(t, 0, r.code)
+	assert.Equal(t, "--version -n\n", r.stdout)
+}
+
+func TestNoDashSeparator(t *testing.T) {
+	// Without --, flags stop at the first non-flag argument.
+	r := patience(t, "", nil, "-n", "1", "echo", "hi")
+	assert.Equal(t, 0, r.code)
+	assert.Equal(t, "hi\n", r.stdout)
+}
+
+func TestParseCodes(t *testing.T) {
+	got, err := parseCodes(" 1, 75 ,124")
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 75, 124}, got)
+	_, err = parseCodes(",")
+	assert.Error(t, err)
+}
+
+// TestHelpMatchesReadme fails when a flag exists in --help but not in the
+// README's flag block, or the other way round.
+func TestHelpMatchesReadme(t *testing.T) {
+	help := patience(t, "", nil, "--help").stdout
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	require.NoError(t, err)
+	flagRe := regexp.MustCompile(`--[a-z][a-z-]+`)
+	seen := func(s string) map[string]bool {
+		m := map[string]bool{}
+		for _, f := range flagRe.FindAllString(s, -1) {
+			m[f] = true
 		}
-	}()
-
-	// Given environment variables are set
-	os.Setenv("PATIENCE_ATTEMPTS", "2")
-	os.Setenv("PATIENCE_BASE_DELAY", "0.1s")
-
-	// And a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a command that fails once then succeeds
-	cmd := exec.Command(binary, "exponential", "--", "sh", "-c", "if [ ! -f /tmp/retry-test-env ]; then touch /tmp/retry-test-env && exit 1; else rm -f /tmp/retry-test-env && exit 0; fi")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should succeed using environment configuration
-	require.NoError(t, err)
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "[retry] Attempt 1/2 failed")
-	assert.Contains(t, outputStr, "[retry] Command succeeded after 2 attempts")
-}
-
-func TestCLI_ConfigurationPrecedence(t *testing.T) {
-	// Create temporary config file
-	configContent := `
-attempts = 5
-base_delay = "2s"
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// Save and set environment variable
-	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
-		} else {
-			os.Unsetenv("PATIENCE_ATTEMPTS")
-		}
-	}()
-	os.Setenv("PATIENCE_ATTEMPTS", "3") // Should override config file
-
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with CLI flag (should override both env and config)
-	cmd := exec.Command(binary, "exponential", "--config", configFile, "--attempts", "1", "--", "exit", "1")
-	output, err := cmd.CombinedOutput()
-
-	// Then CLI flag should take precedence (only 1 attempt)
-	require.Error(t, err) // Should fail since only 1 attempt
-	outputStr := string(output)
-	assert.NotContains(t, outputStr, "Attempt 2") // Should not retry
-}
-
-func TestCLI_ConfigurationValidation(t *testing.T) {
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with invalid configuration
-	cmd := exec.Command(binary, "exponential", "--attempts", "0", "--", "echo", "test")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should return validation error
-	require.Error(t, err)
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "must be between 1 and 1000")
-}
-
-func TestCLI_DebugConfiguration(t *testing.T) {
-	// Create temporary config file
-	configContent := `
-attempts = 5
-base_delay = "1s"
-`
-	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "patience.toml")
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// Given a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing with debug config flag (if supported)
-	cmd := exec.Command(binary, "exponential", "--config", configFile, "--attempts", "2", "--", "echo", "test")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should succeed (debug config may not be implemented yet)
-	require.NoError(t, err)
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "test") // Should contain command output
-}
-
-func TestCLI_EnvironmentVariableValidation(t *testing.T) {
-	// Save original environment
-	originalEnv := os.Getenv("PATIENCE_ATTEMPTS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("PATIENCE_ATTEMPTS", originalEnv)
-		} else {
-			os.Unsetenv("PATIENCE_ATTEMPTS")
-		}
-	}()
-
-	// Given invalid environment variable
-	os.Setenv("PATIENCE_ATTEMPTS", "invalid")
-
-	// And a compiled retry binary
-	binary := buildBinary(t)
-
-	// When executing a command
-	cmd := exec.Command(binary, "exponential", "--", "echo", "test")
-	output, err := cmd.CombinedOutput()
-
-	// Then it should return an error for invalid environment variable
-	require.Error(t, err)
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "cannot parse 'attempts'")
-}
-
-func TestCLI_ComplexEnvironmentConfiguration(t *testing.T) {
-	// Save original environment
-	originalEnv := make(map[string]string)
-	envVars := []string{
-		"PATIENCE_ATTEMPTS", "PATIENCE_BASE_DELAY", "PATIENCE_MULTIPLIER", "PATIENCE_MAX_DELAY",
+		return m
 	}
-
-	for _, envVar := range envVars {
-		originalEnv[envVar] = os.Getenv(envVar)
-		os.Unsetenv(envVar)
+	inHelp := seen(help)
+	start := strings.Index(string(readme), "### Flags")
+	end := strings.Index(string(readme)[start:], "Durations take")
+	inReadme := seen(string(readme)[start : start+end])
+	for f := range inHelp {
+		assert.True(t, inReadme[f], "%s is in --help but not in README flags", f)
 	}
-
-	// Restore environment after test
-	defer func() {
-		for _, envVar := range envVars {
-			if value, exists := originalEnv[envVar]; exists && value != "" {
-				os.Setenv(envVar, value)
-			} else {
-				os.Unsetenv(envVar)
-			}
-		}
-	}()
-
-	// Given complex environment configuration
-	os.Setenv("PATIENCE_ATTEMPTS", "3")
-	os.Setenv("PATIENCE_BASE_DELAY", "0.1s")
-	os.Setenv("PATIENCE_MULTIPLIER", "2.0")
-
-	// And a compiled retry binary
-	binary := buildBinary(t)
-
-	// Clean up any existing test files
-	os.Remove("/tmp/retry-test-complex")
-	os.Remove("/tmp/retry-test-complex2")
-
-	// When executing a command that uses environment configuration
-	// Use explicit flags to override any config file that might be present
-	cmd := exec.Command(binary, "fixed", "--delay", "0.1s", "--", "echo", "test")
-	// Run in a clean temp directory to avoid config file interference
-	tempDir := t.TempDir()
-	cmd.Dir = tempDir
-	// Copy binary to temp directory or use absolute path
-	if !filepath.IsAbs(binary) {
-		if cwd, err := os.Getwd(); err == nil {
-			binary = filepath.Join(cwd, binary)
-		}
+	for f := range inReadme {
+		assert.True(t, inHelp[f], "%s is in README flags but not in --help", f)
 	}
-	cmd = exec.Command(binary, "fixed", "--delay", "0.1s", "--", "echo", "test")
-	cmd.Dir = tempDir
-	output, err := cmd.CombinedOutput()
-
-	// Then it should succeed and use the configured attempts from environment
-	require.NoError(t, err)
-	outputStr := string(output)
-	assert.Contains(t, outputStr, "test")
-	assert.Contains(t, outputStr, "Total Attempts: 1") // Should succeed on first try
 }

@@ -1,764 +1,292 @@
 # patience
 
-A command-line tool for retrying commands with adaptive backoff strategies, written in Go. Use it when commands fail due to transient errors — network blips, rate limits, flaky services, or any process that benefits from a second attempt.
+Run a command again until it succeeds.
 
-**Author:** Shane Isley  
-**Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)  
-**License:** MIT
-
-## Why patience?
-
-Deployment scripts fail on temporary network hiccups. Tests flake out randomly. API calls time out at inconvenient moments. Instead of running the same command over and over manually, let `patience` handle the retries.
-
-## Features
-
-- **Strategy-based interface** – Choose the right backoff strategy for your use case
-- **HTTP-aware patience** – Respects `Retry-After` headers and server timing hints
-- **10 backoff strategies** – From simple fixed delays to mathematical proactive rate limiting
-- **Diophantine strategy** – Mathematical proactive rate limiting with multi-instance coordination
-- **Intelligent pattern matching** – Define success/failure based on output patterns, not just exit codes
-- **Timeout protection** – Prevent commands from hanging indefinitely
-- **Preserves behavior** – Your command's output and exit codes work exactly as expected
-- **Minimal dependencies** – Single binary with vendored dependencies
-- **Unix Socket Daemon** – Real daemon server with JSON protocol for multi-instance coordination
-- **Metrics Daemon (Optional)** – Collect and visualize patience metrics with the [`patienced` daemon](DAEMON.md)
-
-## Documentation
-
-📚 **Complete Documentation Suite:**
-- **[Quick Start](#quick-start)** - Get running in 2 minutes
-- **[Migration Guide](#migration-guide)** - Switch from other retry tools
-- **[examples.md](examples.md)** - Real-world usage scenarios and patterns
-- **[Architecture.md](Architecture.md)** - System design and technical decisions
-- **[DAEMON.md](DAEMON.md)** - Optional metrics collection and monitoring
-- **[Development-Guidelines.md](Development-Guidelines.md)** - TDD process and contribution standards
-- **[DOCUMENTATION.md](DOCUMENTATION.md)** - Documentation maintenance and standards
-
-## Quick Start
-
-Get up and running with patience:
-
-### 1. Install
-```bash
-git clone https://github.com/shaneisley/patience.git
-cd patience
-go build -o patience ./cmd/patience
+```
+patience [flags] -- COMMAND [ARGS...]
 ```
 
-### 2. Try It Out
-```bash
-# Basic retry with exponential backoff
-./patience exponential -- curl https://httpbin.org/status/500
+patience runs a command. If the command fails, patience waits and runs it again. It stops at
+the first success, after a set number of attempts, when a time budget runs out, or when you
+press Ctrl-C. It is one static binary for Linux and macOS with no runtime dependencies.
 
-# HTTP-aware retry (respects server timing)
-./patience http-aware -- curl -i https://httpbin.org/delay/2
+## Why
 
-# Mathematical proactive rate limiting (prevents rate limit violations)
-./patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
+Most retries start as a shell loop:
 
-# Success! Your command now has patience
+```text
+for i in 1 2 3; do curl -fsS "$url" && break; sleep 5; done
 ```
 
-### 3. Common Use Cases
+The loop has the same gaps every time someone writes it. The delay is fixed, so a hundred
+clients that failed together retry together. A hung attempt hangs the loop. The loop exits 0
+even when every attempt failed, because `$?` is the status of the last `sleep`. Each gap gets
+patched by hand, in each script, differently.
 
-**API Calls with Rate Limiting:**
-```bash
-patience http-aware -- curl -H "Authorization: Bearer $TOKEN" https://api.github.com/user
+patience is that loop written once, with the gaps closed:
+
+- Delays grow between attempts, with optional jitter so clients spread out.
+- Each attempt can have a timeout, and the whole run a budget.
+- Ctrl-C and SIGTERM reach the command and every process it started.
+- stdin, stdout and stderr pass straight through. The command's exit code is patience's exit code.
+- When the exit code lies, a pattern in the output can decide success or failure instead.
+
+## When to use it
+
+- A network command in a script or CI job fails now and then: `curl`, `git fetch`,
+  `docker pull`, `apt-get update`, `terraform apply`.
+- Something has to be up before the next step can run: a database, a container, a port.
+- An API rate-limits you and expects callers to back off.
+- A tool prints its real result but exits 0 either way, or exits non-zero after succeeding.
+- A command sometimes hangs and should be killed and tried again.
+
+When not to: a tool with a retry of its own that understands the protocol will do better.
+`curl --retry` honours `Retry-After` headers, which patience cannot see. A service that must stay
+up belongs under a supervisor such as systemd or a container runtime. And a command that is not
+safe to repeat, such as a payment without an idempotency key, should not be retried by anything.
+
+## Install
+
+```text
+go install github.com/shaneisley/patience/cmd/patience@latest
 ```
 
-**Database Connections:**
-```bash
-patience linear --increment 2s --max-delay 30s -- psql -h db.example.com -c "SELECT 1"
+Or build from a checkout with `make build`, which writes a static `patience` binary to the
+repository root.
+
+## Quick start
+
+Retry a health check up to five times, waiting 1s, 2s, 4s and 8s between attempts:
+
+```text
+patience -n 5 -- curl -fsS https://example.com/health
 ```
 
-**Deployment Scripts:**
-```bash
-patience exponential --success-pattern "deployment successful" -- kubectl apply -f app.yaml
+Wait for a database to accept connections, checking every two seconds for up to a minute:
+
+```text
+patience -n 0 -b constant -d 2s --max-time 1m -- pg_isready -h db
 ```
 
-**Flaky Tests:**
-```bash
-patience fixed --attempts 5 --delay 1s -- npm test
+Pull an image, giving each attempt 30 seconds and randomising the delays so that many hosts
+starting at once do not retry in step:
+
+```text
+patience -n 4 -t 30s -j 1 -- docker pull registry.example.com/app:latest
 ```
 
-**Multi-Instance Rate Limiting:**
-```bash
-# Coordinate across multiple instances to prevent rate limit violations
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
+Here is what a run looks like. Progress goes to stderr, prefixed `patience:`. The command's
+own output is passed through as it is produced:
+
+```sh
+# expect: exit 7
+patience -n 3 -d 10ms -- sh -c 'echo trying >&2; exit 7'
+# stderr:
+#   trying
+#   patience: attempt 1 failed (exit code 7); retrying in 10ms
+#   trying
+#   patience: attempt 2 failed (exit code 7); retrying in 20ms
+#   trying
+#   patience: attempt 3 failed (exit code 7)
+#   patience: giving up: all 3 attempts failed (exit code 7)
 ```
 
-### 4. Next Steps
-- See [Strategy Details](#strategy-details) for choosing the right backoff strategy
-- Check [Pattern Matching](#pattern-matching) for advanced success/failure detection
-- Explore [Configuration](#configuration) for persistent settings
+A command that succeeds on the first try produces no output from patience unless you pass `-v`.
+`-q` silences progress entirely.
 
-## Installation
+Because progress never touches stdout, patience sits inside a pipeline without changing what
+flows through it:
 
-### From Source
-
-```bash
-git clone https://github.com/shaneisley/patience.git
-cd patience
-go build -o patience ./cmd/patience
+```sh
+seq 5 | patience -- wc -l
+# prints 5
 ```
 
-### Quick Test
+The "wait for something" case, with a background job standing in for the slow service:
 
-```bash
-# Test with a command that always succeeds
-./patience fixed -- echo "Hello, World!"
-
-# Test with a command that fails (will have patience 3 times by default)
-./patience exponential -- false
-
-# Test HTTP-aware strategy
-./patience http-aware -- curl -i https://httpbin.org/status/200
+```sh
+d=$(mktemp -d)
+(sleep 0.2; touch "$d/ready") &
+patience -n 0 -b constant -d 50ms --max-time 5s -- test -f "$d/ready" && rm -r "$d"
+# stderr: a few "failed (exit code 1); retrying in 50ms" lines, then "attempt N succeeded"
 ```
 
-## Basic Usage
+Every example in this file that is fenced as `sh` is run by the test suite against the
+current binary, with `# expect: exit N` giving the expected exit status.
 
-The basic syntax is: `patience STRATEGY [OPTIONS] -- COMMAND [ARGS...]`
+## Flags and defaults
 
-### Quick Start Examples
+Without flags, patience makes 3 attempts with exponential backoff starting at 1s, capped
+at 1m, no jitter, no timeout, and retries on any non-zero exit code.
 
-```bash
-# HTTP-aware patience for API calls (respects Retry-After headers)
-patience http-aware -- curl -i https://api.github.com/user
+### Flags
 
-# Exponential backoff with custom parameters
-patience exponential --base-delay 1s --multiplier 2.0 -- curl https://httpbin.org/delay/2
+```
+Retry control
+  -n, --attempts N         total attempts; 0 = unlimited (default 3)
+  -t, --timeout D          per-attempt timeout; 0 = none (default 0)
+      --max-time D         overall budget including delays; 0 = none (default 0)
+      --retry-on CODES     retry only on these exit codes, e.g. 1,75 (default: any non-zero)
 
-# Linear backoff for database connections
-patience linear --increment 2s --max-delay 30s -- psql -h db.example.com
+Backoff
+  -b, --backoff NAME       constant | linear | exponential | decorrelated (default exponential)
+  -d, --delay D            base delay; increment for linear (default 1s)
+  -m, --max-delay D        cap on any single delay; 0 = none (default 1m)
+  -x, --multiplier F       growth factor for exponential and decorrelated (default 2)
+  -j, --jitter F           0..1: randomise each delay downward by up to this fraction; 1 = full jitter (default 0)
 
-# Using abbreviations for brevity
-patience ha -f exp -- curl -i https://api.github.com
-patience exp -b 1s -x 2.0 -- curl https://httpbin.org/status/503
+Outcome
+      --success-pattern RE attempt succeeds if its output matches (overrides exit code)
+      --failure-pattern RE attempt fails if its output matches (overrides success pattern)
+  -i, --ignore-case        patterns are case-insensitive
+
+Other
+      --foreground         run the command in patience's own process group (see Signals)
+  -q, --quiet              no progress on stderr
+  -v, --verbose            report every attempt and a final summary
+      --version
 ```
 
-### Available Strategies
+Durations take Go syntax: `500ms`, `2s`, `1m30s`. A bare number is an error, not seconds.
 
-| Strategy | Alias | Description | Best For |
-|----------|-------|-------------|----------|
-| `http-aware` | `ha` | Respects HTTP `Retry-After` headers | API calls, HTTP requests |
-| `exponential` | `exp` | Exponentially increasing delays | Network operations, external services |
-| `linear` | `lin` | Linearly increasing delays | Rate-limited APIs, predictable timing |
-| `fixed` | `fix` | Fixed delay between attempts | Simple retries, testing |
-| `jitter` | `jit` | Random jitter around exponential | Distributed systems, load balancing |
-| `decorrelated-jitter` | `dj` | AWS-style decorrelated jitter | High-scale distributed systems |
-| `fibonacci` | `fib` | Fibonacci sequence delays | Moderate growth, gradual recovery |
-| `polynomial` | `poly` | Polynomial growth with configurable exponent | Customizable growth patterns |
-| `adaptive` | `adapt` | Machine learning adaptive strategy | Commands with changing patterns |
-| `diophantine` | `dio` | Mathematical proactive rate limiting | Multi-instance coordination, enterprise APIs |
+Every flag can be set by an environment variable named `PATIENCE_<FLAG>`, with dashes as
+underscores. Flags win over the environment. This is the way to set defaults for a whole CI job:
 
-### Common Options (Available for All Strategies)
-
-```bash
-# Set maximum patience attempts
-patience exponential --attempts 5 -- command
-
-# Add timeout per attempt
-patience linear --timeout 30s -- command
-
-# Pattern matching - succeed when output contains pattern
-patience fixed --success-pattern "deployment successful" -- deploy.sh
-
-# Pattern matching - fail when output contains pattern
-patience exponential --failure-pattern "(?i)error|failed" -- health-check.sh
-
-# Case-insensitive pattern matching
-patience http-aware --success-pattern "SUCCESS" --case-insensitive -- deployment-script
+```sh
+PATIENCE_ATTEMPTS=2 PATIENCE_DELAY=0 PATIENCE_QUIET=true patience -- false
+# expect: exit 1
 ```
 
-## Pattern Matching
+## Choosing a backoff
 
-Many commands don't use exit codes correctly. A deployment script might print "deployment successful" but exit with code 1, or a health check might exit with code 0 but print "Error: service unavailable". Pattern matching lets you define success and failure based on the command's output instead.
+The delay after failed attempt *k* (counting from 1), before the cap and jitter:
 
-### Success Patterns
+| `--backoff`    | delay                              | with `-d 1s -x 2`         |
+|----------------|------------------------------------|---------------------------|
+| `constant`     | `d`                                | 1s, 1s, 1s, 1s            |
+| `linear`       | `d · k`                            | 1s, 2s, 3s, 4s            |
+| `exponential`  | `d · x^(k−1)`                      | 1s, 2s, 4s, 8s            |
+| `decorrelated` | `U[d, min(cap, prev · x)]`         | random, AWS-style         |
 
-Use `--success-pattern` to define when a command should be considered successful, regardless of exit code:
+Every delay is then capped at `--max-delay`. Then, for all but `decorrelated`, jitter is applied:
+with `-j F` the delay becomes `v·(1−F) + U[0, F·v]`. So `-j 1` is full jitter (anywhere from 0
+to v), `-j 0.5` is equal jitter (v/2 to v), and `-j 0.2` shortens the delay by at most 20%.
 
-```bash
-# Deployment tools that don't use exit codes properly
-patience fixed --success-pattern "deployment successful" -- kubectl apply -f deployment.yaml
+Which to pick:
 
-# API responses that indicate success
-patience exponential --success-pattern "\"status\":\"ok\"" -- curl -s https://httpbin.org/json
+- `exponential` (the default) suits most things. Transient faults usually clear within a few
+  seconds, and the growing delay stops a long outage from turning into a tight loop.
+- `constant` suits polling for something that is expected to come up, where there is no
+  reason to wait longer each time.
+- `linear` suits a resource that recovers at a steady rate, such as a queue draining.
+- `decorrelated` is the AWS "decorrelated jitter" sequence, for many clients hammering one
+  service. Its reference implementation uses `-x 3`. It ignores `-j`.
 
-# Multiple success indicators (regex OR)
-patience fixed --success-pattern "(success|completed|ready)" -- health-check.sh
+Add jitter whenever more than one client can be retrying against the same service. Without it,
+clients that fail together stay synchronised on every retry.
+
+```sh
+patience -n 4 -b linear -d 20ms -- false
+# expect: exit 1
+# stderr shows: retrying in 20ms, 40ms, 60ms
 ```
 
-### Failure Patterns
+## Deciding success and failure
 
-Use `--failure-pattern` to define when a command should be considered failed, even with exit code 0:
+By default an attempt succeeds when the command exits 0. Two patterns override that. They are
+checked line by line against both stdout and stderr as the command runs:
 
-```bash
-# Catch error messages in output
-patience exponential --failure-pattern "(?i)error|failed|timeout" -- flaky-script.sh
+1. `--failure-pattern` matched: the attempt failed (exit code 1 if the command exited 0).
+2. Otherwise `--success-pattern` matched: the attempt succeeded.
+3. Otherwise the exit code decides.
 
-# Specific failure conditions
-patience fixed --failure-pattern "connection refused|network unreachable" -- network-test.sh
-
-# JSON error responses
-patience exponential --failure-pattern "\"error\":" -- api-call.sh
+```sh
+# A deploy tool that prints success but exits 1:
+patience -n 1 --success-pattern 'deployment successful' -- sh -c 'echo deployment successful; exit 1'
+# expect: exit 0
 ```
 
-### Pattern Precedence
-
-Patterns are evaluated in this order:
-1. **Failure pattern match** → Command fails (exit code 1)
-2. **Success pattern match** → Command succeeds (exit code 0)  
-3. **Exit code** → Standard behavior (0 = success, non-zero = failure)
-
-### Case-Insensitive Matching
-
-Add `--case-insensitive` to make pattern matching case-insensitive:
-
-```bash
-# Matches "SUCCESS", "success", "Success", etc.
-patience fixed --success-pattern "success" --case-insensitive -- deployment.sh
+```sh
+# A health check that exits 0 but reports an error:
+patience -n 1 --failure-pattern '(?i)error' -- sh -c 'echo ERROR: service unavailable'
+# expect: exit 1
 ```
 
-### Regex Support
+Patterns are Go regular expressions (RE2 syntax). `-i` makes them case-insensitive. A line
+longer than 64 KiB is matched in 64 KiB pieces.
 
-Both success and failure patterns support full regex syntax:
+### Retrying only some failures
 
-```bash
-# Match specific formats
-patience exponential --success-pattern "build #\d+ completed" -- build-script.sh
+Most commands use exit codes to say *why* they failed, and only some of those reasons are
+worth another try. `--retry-on` lists the codes that are:
 
-# Word boundaries
-patience fixed --failure-pattern "\berror\b" -- log-parser.sh
-
-# Capture groups and alternatives
-patience exponential --success-pattern "(deployed|updated) successfully" -- deploy.sh
+```sh
+# Exit 3 is not in the list, so it is not retried.
+patience -n 5 -d 0 --retry-on 1,75 -- sh -c 'exit 3'
+# expect: exit 3
 ```
 
-## Strategy Details
+A command that cannot be started at all, because it is not found or not executable, exits
+127 or 126 and is never retried.
 
-### HTTP-Aware Strategy (`http-aware`, `ha`)
+## Timeouts and budgets
 
-The HTTP-aware strategy parses HTTP responses to determine optimal retry timing.
+`--timeout` limits each attempt. A timed-out attempt is sent SIGTERM, then SIGKILL two seconds
+later if it is still running. It counts as a failure with exit code 124, as in `timeout(1)`:
 
-```bash
-# Basic HTTP-aware patience
-patience http-aware -- curl -i https://api.github.com/user
-
-# With fallback strategy when no HTTP info available
-patience http-aware --fallback exponential -- curl https://httpbin.org/delay/2
-
-# Set maximum delay cap
-patience http-aware --max-delay 5m -- curl https://api.slow-service.com
+```sh
+patience -n 1 -t 100ms -- sleep 5
+# expect: exit 124
 ```
 
-**How it works:**
-- Parses `Retry-After` headers from HTTP responses
-- Extracts patience timing from JSON responses (`retry_after`, `retryAfter` fields)
-- Falls back to specified strategy when no HTTP timing information is available
-- Validated with 7 major APIs: GitHub, Twitter, AWS, Stripe, Discord, Reddit, Slack
+`--max-time` bounds the whole run, delays included. patience will not start a sleep that would
+end past the budget, but it never cuts short a running attempt:
 
-### Mathematical Strategies
-
-#### Exponential Backoff (`exponential`, `exp`)
-Doubles the delay after each failed attempt - industry standard for network operations.
-
-```bash
-# Basic exponential backoff (1s, 2s, 4s, 8s...)
-patience exponential --base-delay 1s -- api-call
-
-# Custom multiplier (1s, 1.5s, 2.25s, 3.375s...)
-patience exponential --base-delay 1s --multiplier 1.5 -- api-call
-
-# With maximum delay cap
-patience exponential --base-delay 1s --max-delay 10s -- api-call
+```sh
+patience -n 0 -b constant -d 50ms --max-time 175ms -- false
+# expect: exit 1
+# attempts at 0ms, 50ms, 100ms and 150ms; the sleep that would end at 200ms is not started
 ```
 
-#### Linear Backoff (`linear`, `lin`)
-Increases delay by a fixed increment each attempt - predictable timing.
-
-```bash
-# Linear progression (2s, 4s, 6s, 8s...)
-patience linear --increment 2s -- gradual-patience
-
-# With maximum delay cap
-patience linear --increment 1s --max-delay 30s -- rate-limited-api
-```
-
-#### Fixed Delay (`fixed`, `fix`)
-Waits the same amount of time between each attempt - simple and predictable.
-
-```bash
-# Wait 3 seconds between each attempt
-patience fixed --delay 3s -- flaky-command
-```
-
-#### Jitter (`jitter`, `jit`)
-Adds randomness to exponential backoff to prevent thundering herd problems.
-
-```bash
-# Random delays between 0 and exponential backoff time
-patience jitter --base-delay 1s --multiplier 2.0 -- distributed-api-call
-```
-
-#### Decorrelated Jitter (`decorrelated-jitter`, `dj`)
-AWS-recommended strategy that uses the previous delay to calculate the next delay.
-
-```bash
-# Smart jitter based on previous delay
-patience decorrelated-jitter --base-delay 1s --multiplier 3.0 -- aws-api-call
-```
-
-#### Fibonacci Backoff (`fibonacci`, `fib`)
-Uses the Fibonacci sequence for delays - moderate growth between linear and exponential.
-
-```bash
-# Fibonacci sequence delays (1s, 1s, 2s, 3s, 5s, 8s...)
-patience fibonacci --base-delay 1s -- moderate-growth-patience
-```
-
-#### Polynomial Backoff (`polynomial`, `poly`)
-Uses polynomial growth with configurable exponent for fine-tuned delay patterns.
-
-```bash
-# Quadratic backoff (1s, 4s, 9s, 16s...)
-patience polynomial --base-delay 1s --exponent 2.0 -- database-connection
-
-# Moderate growth (1s, 2.8s, 5.2s, 8s...)
-patience polynomial --base-delay 1s --exponent 1.5 -- api-call
-
-# Gentle sublinear growth
-patience polynomial --base-delay 1s --exponent 0.8 -- frequent-operation
-```
-
-#### Adaptive Strategy (`adaptive`, `adapt`)
-Machine learning-inspired strategy that learns from success/failure patterns to optimize timing.
-
-```bash
-# Basic adaptive with exponential fallback
-patience adaptive --learning-rate 0.1 --memory-window 50 -- flaky-service
-
-# Fast learning for rapidly changing conditions
-patience adaptive --learning-rate 0.5 --fallback fixed -- dynamic-api
-
-# Conservative learning with large memory
-patience adaptive --learning-rate 0.05 --memory-window 200 -- database-operation
-```
-
-#### Diophantine Strategy (`diophantine`, `dio`)
-Mathematical proactive rate limiting using Diophantine inequalities to prevent rate limit violations before they occur.
-
-```bash
-# Basic proactive rate limiting
-patience diophantine --rate-limit 100 --window 1h -- curl https://httpbin.org/status/429
-
-# Multi-instance coordination via daemon
-patience diophantine --daemon --resource-id "shared-api" --rate-limit 50 --window 1h -- curl https://httpbin.org/status/429
-
-# Custom retry patterns within mathematical constraints
-patience diophantine --rate-limit 1000 --window 1h --retry-offsets "1s,5s,15s" -- api-call.sh
-
-# Enterprise deployment with daemon coordination
-patience diophantine --daemon --daemon-address "/var/run/patience/daemon.sock" --resource-id "production-api" --rate-limit 500 --window 1h -- production-script.sh
-```
-
-### Strategy Comparison
-
-| Strategy | Growth Pattern | Use Case | Example Delays (1s base) |
-|----------|----------------|----------|---------------------------|
-| `http-aware` | Server-directed | HTTP APIs, web services | Varies based on server response |
-| `exponential` | Exponential | Network calls, APIs | 1s, 2s, 4s, 8s |
-| `linear` | Linear | Rate-limited APIs | 1s, 2s, 3s, 4s |
-| `fixed` | Constant | Simple patience, testing | 1s, 1s, 1s, 1s |
-| `jitter` | Random exponential | Distributed systems | 0.3s, 1.8s, 0.9s, 5.2s |
-| `decorrelated-jitter` | Smart random | AWS services, high-scale | 1.2s, 2.8s, 1.9s, 4.1s |
-| `fibonacci` | Fibonacci | Moderate growth | 1s, 1s, 2s, 3s, 5s, 8s |
-| `polynomial` | Polynomial | Customizable growth | 1s, 4s, 9s, 16s (exponent=2.0) |
-| `adaptive` | Learning-based | Changing patterns | Adapts based on success/failure |
-| `diophantine` | Mathematical | Proactive rate limiting | Calculated to prevent violations |
-
-## Configuration
-
-### Configuration Files
-
-`patience` supports configuration files for setting default values. Configuration files use TOML format and follow this precedence order:
-
-1. **CLI flags** (highest priority)
-2. **Environment variables** 
-3. **Configuration file**
-4. **Default values** (lowest priority)
-
-#### Auto-discovery
-
-`patience` automatically looks for configuration files in the current directory:
-- `.patience.toml`
-- `patience.toml`
-
-#### Manual Configuration
-
-Use the `--config` flag to specify a configuration file:
-
-```bash
-patience exponential --config /path/to/config.toml -- command
-```
-
-#### Example Configuration File
-
-```toml
-# .patience.toml
-attempts = 5
-timeout = "30s"
-success_pattern = "deployment successful|build completed"
-failure_pattern = "(?i)error|failed|timeout"
-case_insensitive = true
-
-# Strategy-specific settings (used when no CLI flags provided)
-base_delay = "1s"
-multiplier = 2.0
-max_delay = "10s"
-```
-
-### Environment Variables
-
-All configuration options can be set via environment variables with the `PATIENCE_` prefix:
-
-```bash
-export PATIENCE_ATTEMPTS=5
-export PATIENCE_TIMEOUT=30s
-export PATIENCE_SUCCESS_PATTERN="deployment successful"
-export PATIENCE_FAILURE_PATTERN="(?i)error|failed"
-export PATIENCE_CASE_INSENSITIVE=true
-
-# Strategy-specific variables
-export PATIENCE_BASE_DELAY=1s
-export PATIENCE_MULTIPLIER=2.0
-export PATIENCE_MAX_DELAY=10s
-
-patience exponential -- command
-```
-
-### Debug Configuration
-
-Use `--debug-config` to see how configuration values are resolved:
-
-```bash
-patience exponential --debug-config -- command
-```
-
-This shows where each configuration value came from (CLI flag, environment variable, config file, or default).
-
-## Command-Line Options
-
-### Common Options (Available for All Strategies)
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--attempts` | `-a` | `3` | Maximum number of attempts (1-1000) |
-| `--timeout` | `-t` | `0` | Timeout per attempt (e.g., `30s`, `5m`). Note: ~10-20ms overhead |
-| `--success-pattern` | | | Regex pattern indicating success in stdout/stderr |
-| `--failure-pattern` | | | Regex pattern indicating failure in stdout/stderr |
-| `--case-insensitive` | | `false` | Make pattern matching case-insensitive |
-| `--config` | | | Configuration file path |
-| `--debug-config` | | `false` | Show configuration debug information |
-| `--help` | `-h` | | Show help information |
-
-### Strategy-Specific Options
-
-#### HTTP-Aware Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--fallback` | `-f` | `exponential` | Fallback strategy when no HTTP info available |
-| `--max-delay` | `-m` | `30m` | Maximum delay cap |
-
-#### Exponential Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for first patience |
-| `--multiplier` | `-x` | `2.0` | Multiplier for exponential growth |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Linear Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--increment` | `-i` | `1s` | Delay increment per attempt |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Fixed Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--delay` | `-d` | `1s` | Fixed delay between attempts |
-
-#### Jitter Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for calculations |
-| `--multiplier` | `-x` | `2.0` | Multiplier for jitter range |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Decorrelated Jitter Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for calculations |
-| `--multiplier` | `-x` | `2.0` | Multiplier for jitter calculations |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Fibonacci Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for Fibonacci sequence |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Polynomial Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--base-delay` | `-b` | `1s` | Base delay for polynomial calculation |
-| `--exponent` | `-e` | `2.0` | Polynomial exponent (controls growth rate) |
-| `--max-delay` | `-m` | `60s` | Maximum delay cap |
-
-#### Adaptive Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--learning-rate` | `-r` | `0.1` | Learning rate for adaptation (0.01-1.0) |
-| `--memory-window` | `-w` | `50` | Number of recent outcomes to remember (5-10000) |
-| `--fallback` | `-f` | `exponential` | Fallback strategy when learning data insufficient |
-
-#### Diophantine Strategy
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--rate-limit` | `-l` | `100` | Maximum requests allowed in the time window |
-| `--window` | `-w` | `1h` | Time window for rate limiting (e.g., 1h, 30m, 60s) |
-| `--retry-offsets` | `-o` | `1s,5s,15s` | Comma-separated retry timing offsets |
-| `--daemon` | `-d` | `false` | Enable daemon coordination for multi-instance rate limiting |
-| `--daemon-address` | `-a` | `/var/run/patience/daemon.sock` | Unix socket path for daemon communication |
-| `--resource-id` | `-r` | | Resource identifier for shared rate limiting (derived from command if not specified) |
-
-## How It Works
-
-1. **Run your command** – `patience` executes your command exactly as you would
-2. **Check the result** – Determine success using pattern matching (if configured) or exit code
-3. **Pattern precedence** – Failure patterns override success patterns, which override exit codes
-4. **Exit on success** – If the command succeeds, `patience` exits immediately (remaining attempts are skipped)
-5. **Calculate delay** – Use the configured backoff strategy (fixed, exponential, jitter, linear, decorrelated-jitter, or fibonacci) based on attempt number
-6. **Wait patiently** – If it fails, wait for the calculated delay and try again with grace
-7. **Respect limits** – Stop after the maximum number of attempts or max delay reached
-8. **Preserve exit codes** – The final exit code matches your command's result
-
-## Exit Codes
-
-- **0** – Command succeeded on any attempt (remaining attempts skipped)
-- **1** – Command failed due to failure pattern match
-- **Non-zero** – Command failed after all patience attempts (matches the command's final exit code)
-
-**Note:** `patience` exits with the result of the first successful attempt, not the last attempt.
-
-## Behavior
-
-`patience` stops immediately when a command succeeds and skips remaining attempts.
-
-- ✅ **Exits on first success** - If attempt 1 succeeds, attempts 2-N are never executed
-- 🔄 **Only has patience on failure** - Success means the job is complete
-- 📊 **Preserves exit codes** - Your command's original behavior is maintained
-- ⏱️ **Efficient execution** - No wasted time on unnecessary attempts
-
-### Examples:
-```bash
-# If API is up on attempt 1, attempts 2-5 are skipped
-patience exponential --attempts 5 -- curl https://httpbin.org/status/200
-
-# Only has patience while the service is starting up
-patience linear --attempts 10 --increment 1s -- nc -z localhost 8080
-
-# This stops immediately if the first curl succeeds
-patience http-aware --attempts 5 -- curl https://httpbin.org/status/200
-# Output: "✅ Command succeeded after 1 attempt" (attempts 2-5 never run)
-```
-
-## Migration Guide
-
-Switching from other retry tools? Common migration patterns:
-
-### From `retry` (bash script)
-
-**Old:**
-```bash
-retry -t 5 -d 2 curl https://httpbin.org/status/503
-```
-
-**New:**
-```bash
-patience fixed --attempts 5 --delay 2s -- curl https://httpbin.org/status/503
-```
-
-### From `retries` (Python)
-
-**Old:**
-```python
-@retries(max_attempts=3, delay=1, backoff=2)
-def api_call():
-    return requests.get('https://api.example.com')
-```
-
-**New:**
-```bash
-patience exponential --attempts 3 --base-delay 1s --multiplier 2 -- curl https://httpbin.org/status/503
-```
-
-### From `exponential-backoff` (npm)
-
-**Old:**
-```bash
-exponential-backoff --initial-delay 1000 --max-delay 30000 -- curl api.com
-```
-
-**New:**
-```bash
-patience exponential --base-delay 1s --max-delay 30s -- curl api.com
-```
-
-### From `while` loops
-
-**Old:**
-```bash
-while ! curl https://httpbin.org/status/503; do
-  echo "Retrying in 5 seconds..."
-  sleep 5
-done
-```
-
-**New:**
-```bash
-patience fixed --delay 5s -- curl https://httpbin.org/status/503
-```
-
-### From AWS CLI retry
-
-**Old:**
-```bash
-aws s3 cp file.txt s3://bucket/ --cli-read-timeout 0 --cli-connect-timeout 60
-```
-
-**New:**
-```bash
-patience exponential --timeout 60s -- aws s3 cp file.txt s3://bucket/
-```
-
-### From `timeout` + manual retry
-
-**Old:**
-```bash
-for i in {1..3}; do
-  timeout 30 command && break
-  sleep $((i * 2))
-done
-```
-
-**New:**
-```bash
-patience exponential --attempts 3 --base-delay 2s --timeout 30s -- command
-```
-
-### Key Advantages of patience
-
-1. **HTTP Intelligence**: Automatically respects `Retry-After` headers
-2. **Pattern Matching**: Success/failure based on output, not just exit codes
-3. **Strategy Variety**: 10 different backoff strategies for different use cases
-4. **Real-time Feedback**: Clear progress reporting during retries
-5. **Configuration**: Persistent settings via config files
-6. **Metrics**: Optional daemon for long-term retry analytics
-
-## Examples
-
-Check out [examples.md](examples.md) for real-world usage scenarios and common patterns.
+`-n 0` retries until success, `--max-time`, or a signal. Combine it with `--max-time` unless
+you want the run to be stopped by hand.
+
+## Exit status
+
+| exit    | meaning                                                      |
+|---------|--------------------------------------------------------------|
+| 0       | an attempt succeeded                                         |
+| N       | the last attempt failed with the command's exit code N       |
+| 1       | the last attempt was failed by `--failure-pattern` (exit was 0) |
+| 124     | the last attempt timed out                                   |
+| 126/127 | the command is not executable / not found (no retries)       |
+| 128+S   | patience was interrupted by signal S (130 for Ctrl-C)        |
+| 2       | usage error (bad flag, no command)                           |
+
+## Signals
+
+By default the command runs in its own process group. SIGINT and SIGTERM sent to patience are
+forwarded to that group, so Ctrl-C stops the command and everything it started. A second signal
+kills them. patience then exits 128+signal without retrying.
+
+`--foreground` runs the command in patience's own process group instead. Use it for commands
+that need the terminal, such as prompts, editors, or `ssh` without a command. The terminal then
+delivers Ctrl-C to the command directly, but a `--timeout` kills only the command itself, not
+the processes it started. This is the same trade-off as `timeout --foreground`.
 
 ## Development
 
-This project follows Test-Driven Development (TDD) principles and is built incrementally. The codebase has:
-
-- **Comprehensive test coverage** – Unit tests for all core functionality
-- **Integration tests** – End-to-end CLI testing
-- **Clean architecture** – Modular design with clear separation of concerns
-
-See [Development-Guidelines.md](Development-Guidelines.md) for details on our TDD process and code style.
-
-### Running Tests
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with race detection
-go test -race ./...
-
-# Run CLI integration tests
-go test ./cmd/patience -v
-
-# Run HTTP-aware strategy tests
-go test -v ./pkg/backoff -run TestHTTPAware
+```text
+make build      # static binary
+make test       # go test ./...  (no network, no fixed paths, builds into a temp dir)
+make race       # go test -race -count=3 ./...
+make lint       # gofmt, go vet, staticcheck
+make doctest    # runs every sh block in this file against the built binary
 ```
 
-### Building
-
-```bash
-# Build for current platform
-go build -o patience ./cmd/patience
-
-# Build for multiple platforms
-GOOS=linux GOARCH=amd64 go build -o patience-linux ./cmd/patience
-GOOS=darwin GOARCH=amd64 go build -o patience-darwin ./cmd/patience
-GOOS=windows GOARCH=amd64 go build -o patience.exe ./cmd/patience
-```
-
-## Architecture
-
-The project uses these packages:
-
-- `cmd/patience` – CLI interface with subcommand architecture using Cobra
-- `pkg/executor` – Core patience logic and command execution
-- `pkg/backoff` – Backoff strategies including HTTP-aware intelligence
-- `pkg/conditions` – Pattern matching for success/failure detection
-- `pkg/metrics` – Metrics collection and daemon communication
-- `pkg/ui` – Terminal output and status reporting
-- `pkg/config` – Configuration loading and validation
-
-See [Architecture.md](Architecture.md) for a detailed breakdown of the components.
-
-## Contributing
-
-The project follows conventional commit messages and maintains high test coverage. Contributions are welcome:
-
-- Report bugs or suggest features via [GitHub Issues](https://github.com/shaneisley/patience/issues)
-- Submit pull requests with tests
-- Improve documentation
-- Share your use cases
-
-**Documentation:**
-- [Development Guidelines](Development-Guidelines.md) - TDD process, code style, and contribution standards
-- [Architecture](Architecture.md) - System design and technical decisions
-- [Documentation Maintenance](DOCUMENTATION.md) - How to maintain and improve documentation
-- [Daemon Setup](DAEMON.md) - Optional metrics collection and monitoring
-
-**Getting Started:**
-- See [Development](#development) section for setup instructions
-- Check [examples.md](examples.md) for real-world usage patterns
-- Review existing tests for contribution examples
-
-### Contact
-
-- **Author:** Shane Isley
-- **GitHub:** [@shaneisley](https://github.com/shaneisley)
-- **Repository:** [github.com/shaneisley/patience](https://github.com/shaneisley/patience)
+`CONTRIBUTING.md` has the rules. `PLAN.md` records why the tool looks the way it does, and
+`CHANGELOG.md` lists what changed.
 
 ## License
 
-MIT License – see LICENSE file for details.
-
-## Acknowledgments
-
-Built with:
-- [Cobra](https://github.com/spf13/cobra) for CLI framework
-- [Testify](https://github.com/stretchr/testify) for testing utilities
-- The Go standard library for robust, concurrent execution
-
----
-
-*Practice patience! 🧘*
+MIT, see `LICENSE`.
